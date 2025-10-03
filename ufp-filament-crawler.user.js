@@ -5,9 +5,9 @@
 // @description  Crawlt UFP Filament-Produkte und extrahiert Produktdaten
 // @author       You
 // @match        https://www.ufp.de/de_DE/printer-supplies-3d-verbrauchsmaterialien-pla-filament-3d/*
-// @updateURL    https://raw.githubusercontent.com/Flyor/ufp-filament-crawler/main/ufp-filament-crawler.user.js
-// @downloadURL  https://raw.githubusercontent.com/Flyor/ufp-filament-crawler/main/ufp-filament-crawler.user.js
-// @supportURL   https://github.com/Flyor/ufp-filament-crawler/issues
+// @updateURL    https://raw.githubusercontent.com/Flyor/UFP-Filament-crawl/main/ufp-filament-crawler.user.js
+// @downloadURL  https://raw.githubusercontent.com/Flyor/UFP-Filament-crawl/main/ufp-filament-crawler.user.js
+// @supportURL   https://github.com/Flyor/UFP-Filament-crawl/issues
 // @grant        none
 // ==/UserScript==
 
