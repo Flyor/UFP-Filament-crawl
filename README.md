@@ -177,7 +177,19 @@ Siehe [CHANGELOG.md](CHANGELOG.md) für detaillierte Versionshistorie.
 
 ## 📄 Lizenz
 
-Dieses Projekt steht unter der MIT-Lizenz. Siehe [LICENSE](LICENSE) für Details.
+Dieses Projekt steht unter der Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International License.
+
+**Erlaubt:**
+- ✅ **Private Nutzung** - Für den persönlichen Gebrauch
+- ✅ **Weitergabe** - Kopieren und verteilen
+- ✅ **Attribution** - Mit Namensnennung
+
+**Nicht erlaubt:**
+- ❌ **Kommerzielle Nutzung** - Keine kommerzielle Verwendung
+- ❌ **Modifikation** - Keine Änderungen oder Ableitungen
+- ❌ **Distribution von Änderungen** - Keine Weitergabe modifizierter Versionen
+
+Siehe [LICENSE](LICENSE) für Details.
 
 ## ⚠️ Haftungsausschluss
 
