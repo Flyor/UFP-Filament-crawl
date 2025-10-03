@@ -1,0 +1,68 @@
+# 🚫 Git Ignore für UFP Filament Crawler
+
+# Temporäre Dateien
+*.tmp
+*.temp
+*~
+
+# Log-Dateien
+*.log
+logs/
+
+# Backup-Dateien
+*.bak
+*.backup
+*_backup.*
+
+# IDE/Editor-Dateien
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Node.js (falls später verwendet)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test-Dateien
+test/
+tests/
+*.test.js
+
+# Dokumentation (generiert)
+docs/build/
+
+# Lokale Konfiguration
+config.local.js
+.env
+.env.local
+
+# CSV-Export-Dateien (Beispiele)
+*.csv
+exports/
+
+# Browser-Dateien
+*.crx
+*.xpi
+
+# Archive
+*.zip
+*.rar
+*.7z
+*.tar.gz
+
+# Screenshots
+screenshots/
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# Lokale Entwicklung
+dev/
+development/
+local/
