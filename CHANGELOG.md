@@ -5,6 +5,26 @@ Alle wichtigen Änderungen an diesem Projekt werden in dieser Datei dokumentiert
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [1.6.3] - 2025-01-03
+
+### 🐛 Behoben
+- **Kritische Diskrepanz zwischen Log und CSV** - Log und CSV zeigen jetzt konsistente Änderungszählungen
+- **Race Condition in Änderungsberechnung** - Änderungen werden nur einmal berechnet und konsistent verwendet
+- **Fehlende pricePerKg in historischen Daten** - Alle Felder werden jetzt korrekt gespeichert
+- **Undefined-Variablen in Fehlerbehandlung** - Alle DOM-Zugriffe sind jetzt abgesichert
+- **Null-Pointer-Zugriffe** - Alle UI-Element-Zugriffe mit Null-Check abgesichert
+
+### 🔧 Verbessert
+- **CSV-Format optimiert** - Alte und neue Werte stehen nebeneinander für besseren Vergleich
+- **Robuste Fehlerbehandlung** - Script funktioniert auch wenn UI-Elemente fehlen
+- **Defensive Programmierung** - Alle DOM-Zugriffe sind abgesichert
+- **Konsistente Null-Checks** - Einheitliche Behandlung aller potenziellen Null-Werte
+
+### 📊 CSV-Format
+- **Neue Spalten-Reihenfolge:** Alter Preis → Neuer Preis → Alter Preis pro kg → Neuer Preis pro kg
+- **Verfügbarkeits-Spalten:** Alte Verfügbarkeit → Neue Verfügbarkeit → Alter Lagernd → Neuer Lagernd → Status
+- **Bessere Vergleichbarkeit** - Alte und neue Werte direkt nebeneinander
+
 ## [1.6.0] - 2025-01-03
 
 ### ✨ Hinzugefügt

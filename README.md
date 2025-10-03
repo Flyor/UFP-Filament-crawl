@@ -1,6 +1,6 @@
 # 🕷️ UFP Filament Crawler
 
-**Version:** 1.6.0
+**Version:** 1.6.3
 
 Ein intelligenter Tampermonkey-Script für Chrome, der automatisch 3D-Filament-Produkte von ufp.de crawlt und die Daten in CSV-Format exportiert.
 
@@ -66,10 +66,12 @@ Ein intelligenter Tampermonkey-Script für Chrome, der automatisch 3D-Filament-P
 
 ## 📊 CSV-Format
 
-### Haupt-CSV
+### Haupt-CSV (Version 1.6.3+)
 ```csv
-Name;Artikelnummer;Hersteller;Material;Farbe;Durchmesser;Gewicht;Preis;Preis pro kg;Verfügbarkeit;Lagernd;URL;Status;Alter Preis;Alte Verfügbarkeit
+Name;Artikelnummer;Hersteller;Material;Farbe;Durchmesser;Gewicht;URL;Alter Preis;Neuer Preis;Alter Preis pro kg;Neuer Preis pro kg;Alte Verfügbarkeit;Neue Verfügbarkeit;Alter Lagernd;Neuer Lagernd;Status
 ```
+
+**🎯 Verbesserung:** Alte und neue Werte stehen nebeneinander für besseren Vergleich!
 
 ### Änderungs-CSV
 ```csv
@@ -152,6 +154,10 @@ Erkennt über 50 Farben inklusive:
 - ✅ Browser-Downloads erlaubt?
 - ✅ Popup-Blocker deaktiviert?
 - ✅ Ausreichend Speicherplatz?
+
+#### **Log und CSV zeigen unterschiedliche Werte**
+- ✅ **Version 1.6.3+ behoben** - Log und CSV zeigen jetzt konsistente Änderungszählungen
+- ✅ **Robuste Fehlerbehandlung** - Script funktioniert auch bei UI-Problemen
 
 ### Debug-Modus
 ```javascript

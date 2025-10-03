@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UFP Filament Crawler
 // @namespace    http://tampermonkey.net/
-// @version      1.6.2
+// @version      1.6.3
 // @description  Crawlt UFP Filament-Produkte und extrahiert Produktdaten
 // @author       Stonehiller Industries
 // @match        https://www.ufp.de/de_DE/printer-supplies-3d-verbrauchsmaterialien-pla-filament-3d/*
@@ -197,7 +197,7 @@
         ui.className = 'ufp-crawler-ui';
         ui.innerHTML = `
             <div class="ufp-crawler-header">
-                🕷️ UFP Filament Crawler v1.6.2
+                🕷️ UFP Filament Crawler v1.6.3
             </div>
             <div class="ufp-crawler-content">
                 <div class="ufp-crawler-status info">
@@ -251,10 +251,15 @@
         document.body.appendChild(ui);
         
         // Event Listeners
-        document.getElementById('start-crawl').addEventListener('click', startCrawling);
-        document.getElementById('stop-crawl').addEventListener('click', stopCrawling);
-        document.getElementById('export-csv').addEventListener('click', exportToCSV);
-        document.getElementById('clear-data').addEventListener('click', clearData);
+        const startCrawlBtn = document.getElementById('start-crawl');
+        const stopCrawlBtn = document.getElementById('stop-crawl');
+        const exportCsvBtn = document.getElementById('export-csv');
+        const clearDataBtn = document.getElementById('clear-data');
+        
+        if (startCrawlBtn) startCrawlBtn.addEventListener('click', startCrawling);
+        if (stopCrawlBtn) stopCrawlBtn.addEventListener('click', stopCrawling);
+        if (exportCsvBtn) exportCsvBtn.addEventListener('click', exportToCSV);
+        if (clearDataBtn) clearDataBtn.addEventListener('click', clearData);
         
         // Initiale Log-Nachricht
         addLogEntry('Crawler bereit', 'info');
@@ -694,6 +699,7 @@
                     sku: p.sku,
                     name: p.name,
                     price: p.price,
+                    pricePerKg: p.pricePerKg,
                     availability: p.availability,
                     inStock: p.inStock
                 }))
@@ -863,9 +869,9 @@
             
             // Fortschritt aktualisieren
             const progress = (currentPage / totalPages) * 100;
-            progressBar.style.width = progress + '%';
+            if (progressBar) progressBar.style.width = progress + '%';
             
-            statusDiv.textContent = `Seite ${currentPage}/${totalPages} gecrawlt: ${products.length} Produkte gefunden (Gesamt: ${crawledData.length})`;
+            if (statusDiv) statusDiv.textContent = `Seite ${currentPage}/${totalPages} gecrawlt: ${products.length} Produkte gefunden (Gesamt: ${crawledData.length})`;
             
             // Kurz warten
             await new Promise(resolve => setTimeout(resolve, 800));
@@ -888,12 +894,13 @@
         } catch (error) {
             addLogEntry(`Fehler beim Fortsetzen des Crawlings: ${error.message}`, 'error');
             isCrawling = false;
-            startButton.disabled = false;
-            startButton.textContent = '🚀 Crawling starten';
-            startButton.style.display = 'block';
-            stopButton.style.display = 'none';
-            statusDiv.className = 'ufp-crawler-status warning';
-            statusDiv.textContent = 'Fehler beim Crawling aufgetreten.';
+            if (startButton) startButton.disabled = false;
+            if (startButton) startButton.textContent = '🚀 Crawling starten';
+            if (startButton) startButton.style.display = 'block';
+            const stopButton = document.getElementById('stop-crawl');
+            if (stopButton) stopButton.style.display = 'none';
+            if (statusDiv) statusDiv.className = 'ufp-crawler-status warning';
+            if (statusDiv) statusDiv.textContent = 'Fehler beim Crawling aufgetreten.';
         }
     }
 
@@ -908,17 +915,19 @@
         const exportButton = document.getElementById('export-csv');
         const statusDiv = document.querySelector('.ufp-crawler-status');
         
-        startButton.disabled = false;
-        startButton.textContent = '🚀 Crawling starten';
-        startButton.style.display = 'block';
-        stopButton.style.display = 'none';
+        if (startButton) startButton.disabled = false;
+        if (startButton) startButton.textContent = '🚀 Crawling starten';
+        if (startButton) startButton.style.display = 'block';
+        if (stopButton) stopButton.style.display = 'none';
         
+        // Export-Button aktivieren - finishCrawling wird nicht aufgerufen, daher lastChanges bleibt null
+        // Das wird in exportToCSV() abgefangen
         if (crawledData.length > 0) {
-            exportButton.disabled = false;
+            if (exportButton) exportButton.disabled = false;
         }
         
-        statusDiv.className = 'ufp-crawler-status warning';
-        statusDiv.textContent = `Crawling gestoppt! ${crawledData.length} Produkte erfasst.`;
+        if (statusDiv) statusDiv.className = 'ufp-crawler-status warning';
+        if (statusDiv) statusDiv.textContent = `Crawling gestoppt! ${crawledData.length} Produkte erfasst.`;
     }
 
     // Crawling starten
@@ -937,16 +946,17 @@
         const statusDiv = document.querySelector('.ufp-crawler-status');
         const progressBar = document.getElementById('progress-bar');
         
-        startButton.disabled = true;
-        startButton.style.display = 'none';
-        stopButton.style.display = 'block';
-        statusDiv.className = 'ufp-crawler-status info';
-        statusDiv.textContent = 'Crawling gestartet...';
+        if (startButton) startButton.disabled = true;
+        if (startButton) startButton.style.display = 'none';
+        if (stopButton) stopButton.style.display = 'block';
+        if (statusDiv) statusDiv.className = 'ufp-crawler-status info';
+        if (statusDiv) statusDiv.textContent = 'Crawling gestartet...';
         
         // Gesamtseitenzahl dynamisch ermitteln
         if (totalPages === 0) {
             totalPages = getTotalPages();
-            document.getElementById('total-pages').textContent = totalPages;
+            const totalPagesElement = document.getElementById('total-pages');
+            if (totalPagesElement) totalPagesElement.textContent = totalPages;
             addLogEntry(`${totalPages} Seiten erkannt`, 'info');
         }
         
@@ -978,9 +988,9 @@
             
             // Fortschritt aktualisieren
             const progress = (currentPage / totalPages) * 100;
-            progressBar.style.width = progress + '%';
+            if (progressBar) progressBar.style.width = progress + '%';
             
-            statusDiv.textContent = `Seite ${currentPage}/${totalPages} gecrawlt: ${products.length} Produkte gefunden (Gesamt: ${crawledData.length})`;
+            if (statusDiv) statusDiv.textContent = `Seite ${currentPage}/${totalPages} gecrawlt: ${products.length} Produkte gefunden (Gesamt: ${crawledData.length})`;
             
             // Kurz warten
             await new Promise(resolve => setTimeout(resolve, 800));
@@ -1003,14 +1013,19 @@
         } catch (error) {
             addLogEntry(`Fehler beim Crawling: ${error.message}`, 'error');
             isCrawling = false;
-            startButton.disabled = false;
-            startButton.textContent = '🚀 Crawling starten';
-            startButton.style.display = 'block';
-            stopButton.style.display = 'none';
-            statusDiv.className = 'ufp-crawler-status warning';
-            statusDiv.textContent = 'Fehler beim Crawling aufgetreten.';
+            if (startButton) startButton.disabled = false;
+            if (startButton) startButton.textContent = '🚀 Crawling starten';
+            if (startButton) startButton.style.display = 'block';
+            const stopButton = document.getElementById('stop-crawl');
+            if (stopButton) stopButton.style.display = 'none';
+            if (statusDiv) statusDiv.className = 'ufp-crawler-status warning';
+            if (statusDiv) statusDiv.textContent = 'Fehler beim Crawling aufgetreten.';
         }
     }
+
+    // Globale Variablen für Änderungen
+    let lastChanges = null;
+    let originalHistoricalData = null;
 
     // Crawling abschließen und Änderungen analysieren
     async function finishCrawling() {
@@ -1023,6 +1038,9 @@
         // Historische Daten laden
         const historicalData = loadHistoricalData();
         
+        // Ursprüngliche historische Daten für CSV-Export speichern
+        originalHistoricalData = historicalData;
+        
         // Aktuelle Crawl-Daten
         const currentData = {
             totalPages: totalPages,
@@ -1033,8 +1051,8 @@
         // Prüfe ob Crawl als fehlerhaft eingestuft werden soll
         const isFailedCrawl = isCrawlFailed(currentData, historicalData);
         
-        // Änderungen erkennen
-        const changes = detectChanges(currentData, historicalData);
+        // Änderungen erkennen und global speichern (VOR der Aktualisierung der historischen Daten)
+        lastChanges = detectChanges(currentData, historicalData);
         
         // Nur historische Daten speichern wenn Crawl erfolgreich war
         if (!isFailedCrawl) {
@@ -1049,54 +1067,57 @@
         
         // Status aktualisieren
         isCrawling = false;
-        startButton.disabled = false;
-        startButton.textContent = '🚀 Crawling starten';
-        startButton.style.display = 'block';
-        stopButton.style.display = 'none';
-        exportButton.disabled = false;
-        progressBar.style.width = '100%';
+        if (startButton) startButton.disabled = false;
+        if (startButton) startButton.textContent = '🚀 Crawling starten';
+        if (startButton) startButton.style.display = 'block';
+        if (stopButton) stopButton.style.display = 'none';
+        if (exportButton) exportButton.disabled = false;
+        if (progressBar) progressBar.style.width = '100%';
         
         // Detaillierte Statusmeldung mit Änderungen
         let statusMessage = `Crawling abgeschlossen! ${crawledData.length} Produkte von ${totalPages} Seiten gefunden.`;
         
         if (isFailedCrawl) {
             statusMessage += `\n⚠️ Fehlerhafter Crawl erkannt - historische Daten bleiben unverändert.`;
-            statusDiv.className = 'ufp-crawler-status warning';
-        } else if (changes.isFirstRun) {
-            statusMessage += `\n🎉 Erster Crawl - ${changes.newProducts} Produkte erfasst.`;
-            addLogEntry(`Erster Crawl abgeschlossen: ${changes.newProducts} Produkte erfasst`, 'success');
-            statusDiv.className = 'ufp-crawler-status success';
+            if (statusDiv) statusDiv.className = 'ufp-crawler-status warning';
+        } else if (lastChanges.isFirstRun) {
+            statusMessage += `\n🎉 Erster Crawl - ${lastChanges.newProducts} Produkte erfasst.`;
+            addLogEntry(`Erster Crawl abgeschlossen: ${lastChanges.newProducts} Produkte erfasst`, 'success');
+            if (statusDiv) statusDiv.className = 'ufp-crawler-status success';
         } else {
-            if (changes.newProducts > 0 || changes.removedProducts > 0 || changes.priceChanges > 0 || changes.availabilityChanges > 0) {
+            if (lastChanges.newProducts > 0 || lastChanges.removedProducts > 0 || lastChanges.priceChanges > 0 || lastChanges.availabilityChanges > 0) {
                 statusMessage += `\n📊 Änderungen erkannt:`;
-                if (changes.newProducts > 0) statusMessage += ` +${changes.newProducts} neue`;
-                if (changes.removedProducts > 0) statusMessage += ` -${changes.removedProducts} entfernte`;
-                if (changes.priceChanges > 0) statusMessage += ` ${changes.priceChanges} Preisänderungen`;
-                if (changes.availabilityChanges > 0) statusMessage += ` ${changes.availabilityChanges} Verfügbarkeitsänderungen`;
+                if (lastChanges.newProducts > 0) statusMessage += ` +${lastChanges.newProducts} neue`;
+                if (lastChanges.removedProducts > 0) statusMessage += ` -${lastChanges.removedProducts} entfernte`;
+                if (lastChanges.priceChanges > 0) statusMessage += ` ${lastChanges.priceChanges} Preisänderungen`;
+                if (lastChanges.availabilityChanges > 0) statusMessage += ` ${lastChanges.availabilityChanges} Verfügbarkeitsänderungen`;
                 
-                addLogEntry(`Änderungen erkannt: +${changes.newProducts} neue, -${changes.removedProducts} entfernte, ${changes.priceChanges} Preisänderungen, ${changes.availabilityChanges} Verfügbarkeitsänderungen`, 'info');
+                addLogEntry(`Änderungen erkannt: +${lastChanges.newProducts} neue, -${lastChanges.removedProducts} entfernte, ${lastChanges.priceChanges} Preisänderungen, ${lastChanges.availabilityChanges} Verfügbarkeitsänderungen`, 'info');
             } else {
                 statusMessage += `\n✅ Keine Änderungen seit dem letzten Crawl.`;
                 addLogEntry('Keine Änderungen seit dem letzten Crawl erkannt', 'success');
             }
-            statusDiv.className = 'ufp-crawler-status success';
+            if (statusDiv) statusDiv.className = 'ufp-crawler-status success';
         }
         
-        statusDiv.textContent = statusMessage;
+        if (statusDiv) statusDiv.textContent = statusMessage;
         
         // Console-Log für detaillierte Analyse
         console.log('Crawling abgeschlossen:', {
             totalPages: totalPages,
             totalProducts: crawledData.length,
-            changes: changes,
+            changes: lastChanges,
             historicalData: historicalData
         });
     }
 
     // Statistiken aktualisieren
     function updateStats() {
-        document.getElementById('crawled-count').textContent = crawledData.length;
-        document.getElementById('current-page').textContent = currentPage;
+        const crawledCountElement = document.getElementById('crawled-count');
+        const currentPageElement = document.getElementById('current-page');
+        
+        if (crawledCountElement) crawledCountElement.textContent = crawledData.length;
+        if (currentPageElement) currentPageElement.textContent = currentPage;
     }
 
     // Separate Änderungs-CSV erstellen
@@ -1270,18 +1291,41 @@
         const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
         const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-'); // HH-MM-SS
         
-        // Historische Daten für Änderungs-Tracking laden
-        const historicalData = loadHistoricalData();
+        // Verwende die ursprünglichen historischen Daten aus finishCrawling()
+        // Falls originalHistoricalData nicht verfügbar ist, lade die aktuellen historischen Daten
+        const historicalData = originalHistoricalData || loadHistoricalData();
         const hasHistory = historicalData && historicalData.products;
         
+        // Verwende die bereits berechneten Änderungen aus finishCrawling()
+        // Falls lastChanges noch nicht gesetzt ist (Export vor finishCrawling), berechne Änderungen jetzt
+        let changesToUse = lastChanges;
+        if (!changesToUse && hasHistory) {
+            const currentData = {
+                totalPages: totalPages,
+                totalProducts: crawledData.length,
+                products: crawledData
+            };
+            changesToUse = detectChanges(currentData, historicalData);
+        }
+        
+        // Header-Array erstellen - alte und neue Werte nebeneinander
         const headers = [
             'Name', 'Artikelnummer', 'Hersteller', 'Material', 'Farbe', 
-            'Durchmesser', 'Gewicht', 'Preis', 'Preis pro kg', 'Verfügbarkeit', 'Lagernd', 'URL'
+            'Durchmesser', 'Gewicht', 'URL'
         ];
         
-        // Änderungs-Spalten hinzufügen wenn historische Daten vorhanden
+        // Preis-Spalten: Alter Preis → Neuer Preis → Alter Preis pro kg → Neuer Preis pro kg
         if (hasHistory) {
-            headers.push('Status', 'Alter Preis', 'Alte Verfügbarkeit');
+            headers.push('Alter Preis', 'Neuer Preis', 'Alter Preis pro kg', 'Neuer Preis pro kg');
+        } else {
+            headers.push('Preis', 'Preis pro kg');
+        }
+        
+        // Verfügbarkeits-Spalten: Alte Verfügbarkeit → Neue Verfügbarkeit → Alter Lagernd → Neuer Lagernd
+        if (hasHistory) {
+            headers.push('Alte Verfügbarkeit', 'Neue Verfügbarkeit', 'Alter Lagernd', 'Neuer Lagernd', 'Status');
+        } else {
+            headers.push('Verfügbarkeit', 'Lagernd');
         }
         
         // Erstelle Map für schnellen Vergleich mit historischen Daten
@@ -1295,6 +1339,7 @@
         const csvContent = [
             headers.join(';'),
             ...crawledData.map(product => {
+                // Basis-Informationen (immer vorhanden)
                 const row = [
                     `"${product.name || ''}"`,
                     `"${product.sku || ''}"`,
@@ -1303,18 +1348,42 @@
                     `"${product.color || ''}"`,
                     `"${product.diameter || ''}"`,
                     `"${product.weight || ''}"`,
-                    `"${product.price || ''}"`,
-                    `"${product.pricePerKg || ''}"`,
-                    `"${product.availability || ''}"`,
-                    `"${product.inStock ? 'Ja' : 'Nein'}"`,
                     `"${product.url || ''}"`
                 ];
                 
-                // Änderungs-Informationen hinzufügen wenn historische Daten vorhanden
+                // Preis-Informationen
                 if (hasHistory) {
                     const historicalProduct = historicalMap.get(product.sku);
                     if (historicalProduct) {
-                        // Produkt existiert bereits
+                        // Alter Preis → Neuer Preis → Alter Preis pro kg → Neuer Preis pro kg
+                        row.push(`"${historicalProduct.price || ''}"`);
+                        row.push(`"${product.price || ''}"`);
+                        row.push(`"${historicalProduct.pricePerKg || ''}"`);
+                        row.push(`"${product.pricePerKg || ''}"`);
+                    } else {
+                        // Neues Produkt - nur neue Werte
+                        row.push('""'); // Alter Preis
+                        row.push(`"${product.price || ''}"`);
+                        row.push('""'); // Alter Preis pro kg
+                        row.push(`"${product.pricePerKg || ''}"`);
+                    }
+                } else {
+                    // Keine historischen Daten - nur aktuelle Werte
+                    row.push(`"${product.price || ''}"`);
+                    row.push(`"${product.pricePerKg || ''}"`);
+                }
+                
+                // Verfügbarkeits-Informationen
+                if (hasHistory) {
+                    const historicalProduct = historicalMap.get(product.sku);
+                    if (historicalProduct) {
+                        // Alte Verfügbarkeit → Neue Verfügbarkeit → Alter Lagernd → Neuer Lagernd → Status
+                        row.push(`"${historicalProduct.availability || ''}"`);
+                        row.push(`"${product.availability || ''}"`);
+                        row.push(`"${historicalProduct.inStock ? 'Ja' : 'Nein'}"`);
+                        row.push(`"${product.inStock ? 'Ja' : 'Nein'}"`);
+                        
+                        // Status bestimmen
                         let status = 'Unverändert';
                         if (product.price !== historicalProduct.price) {
                             status = 'Preis geändert';
@@ -1322,16 +1391,19 @@
                                   product.inStock !== historicalProduct.inStock) {
                             status = 'Verfügbarkeit geändert';
                         }
-                        
                         row.push(`"${status}"`);
-                        row.push(`"${historicalProduct.price || ''}"`);
-                        row.push(`"${historicalProduct.availability || ''}"`);
                     } else {
                         // Neues Produkt
+                        row.push('""'); // Alte Verfügbarkeit
+                        row.push(`"${product.availability || ''}"`);
+                        row.push('""'); // Alter Lagernd
+                        row.push(`"${product.inStock ? 'Ja' : 'Nein'}"`);
                         row.push('"Neu"');
-                        row.push('""');
-                        row.push('""');
                     }
+                } else {
+                    // Keine historischen Daten - nur aktuelle Werte
+                    row.push(`"${product.availability || ''}"`);
+                    row.push(`"${product.inStock ? 'Ja' : 'Nein'}"`);
                 }
                 
                 return row.join(';');
@@ -1339,16 +1411,10 @@
         ];
         
         // Änderungs-Zusammenfassung hinzufügen wenn historische Daten vorhanden
-        if (hasHistory) {
-            const changes = detectChanges({
-                totalPages: 0,
-                totalProducts: crawledData.length,
-                products: crawledData
-            }, historicalData);
-            
+        if (hasHistory && changesToUse) {
             csvContent.push(''); // Leere Zeile
             csvContent.push('# Änderungen seit letztem Crawl:');
-            csvContent.push(`# +${changes.newProducts} neue Produkte, -${changes.removedProducts} entfernte, ${changes.priceChanges} Preisänderungen, ${changes.availabilityChanges} Verfügbarkeitsänderungen`);
+            csvContent.push(`# +${changesToUse.newProducts} neue Produkte, -${changesToUse.removedProducts} entfernte, ${changesToUse.priceChanges} Preisänderungen, ${changesToUse.availabilityChanges} Verfügbarkeitsänderungen`);
             csvContent.push(`# Crawl-Datum: ${now.toLocaleString('de-DE')}`);
             csvContent.push(`# Letzter Crawl: ${new Date(historicalData.timestamp).toLocaleString('de-DE')}`);
         }
@@ -1367,23 +1433,19 @@
         document.body.removeChild(link);
         
         // Separate Änderungs-CSV erstellen wenn historische Daten vorhanden
-        if (hasHistory) {
-            const changes = detectChanges({
-                totalPages: 0,
-                totalProducts: crawledData.length,
-                products: crawledData
-            }, historicalData);
-            
+        if (hasHistory && changesToUse) {
             // Nur Änderungs-CSV erstellen wenn es Änderungen gibt
-            if (changes.newProducts > 0 || changes.removedProducts > 0 || changes.priceChanges > 0 || changes.availabilityChanges > 0) {
-                createChangesCSV(crawledData, historicalData, changes, dateStr, timeStr);
+            if (changesToUse.newProducts > 0 || changesToUse.removedProducts > 0 || changesToUse.priceChanges > 0 || changesToUse.availabilityChanges > 0) {
+                createChangesCSV(crawledData, historicalData, changesToUse, dateStr, timeStr);
             }
         }
         
         // Status aktualisieren
         const statusDiv = document.querySelector('.ufp-crawler-status');
-        statusDiv.className = 'ufp-crawler-status success';
-        statusDiv.textContent = `CSV exportiert: ${crawledData.length} Produkte`;
+        if (statusDiv) {
+            if (statusDiv) statusDiv.className = 'ufp-crawler-status success';
+            statusDiv.textContent = `CSV exportiert: ${crawledData.length} Produkte`;
+        }
     }
 
     // Daten löschen
@@ -1395,6 +1457,8 @@
             totalPages = 0;
             emptyPageCount = 0;
             lastProductCount = 0;
+            lastChanges = null;
+            originalHistoricalData = null;
             
             localStorage.removeItem('ufp-crawler-history');
             localStorage.removeItem('ufp-crawler-session');
@@ -1406,22 +1470,23 @@
             const startButton = document.getElementById('start-crawl');
             const stopButton = document.getElementById('stop-crawl');
             
-            statusDiv.className = 'ufp-crawler-status info';
-            statusDiv.textContent = 'Bereit zum Crawlen';
-            progressBar.style.width = '0%';
-            exportButton.disabled = true;
+            if (statusDiv) statusDiv.className = 'ufp-crawler-status info';
+            if (statusDiv) statusDiv.textContent = 'Bereit zum Crawlen';
+            if (progressBar) progressBar.style.width = '0%';
+            if (exportButton) exportButton.disabled = true;
             
             if (startButton) {
-                startButton.disabled = false;
-                startButton.style.display = 'block';
-                startButton.textContent = '🚀 Crawling starten';
+                if (startButton) startButton.disabled = false;
+                if (startButton) startButton.style.display = 'block';
+                if (startButton) startButton.textContent = '🚀 Crawling starten';
             }
             
             if (stopButton) {
-                stopButton.style.display = 'none';
+                if (stopButton) stopButton.style.display = 'none';
             }
             
-            document.getElementById('total-pages').textContent = '0';
+            const totalPagesElement = document.getElementById('total-pages');
+            if (totalPagesElement) totalPagesElement.textContent = '0';
             
             addLogEntry('Alle Daten gelöscht - Neustart möglich', 'info');
         }
@@ -1449,7 +1514,8 @@
                 
                 // UI aktualisieren
                 updateStats();
-                document.getElementById('total-pages').textContent = totalPages;
+                const totalPagesElement = document.getElementById('total-pages');
+                if (totalPagesElement) totalPagesElement.textContent = totalPages;
                 
                 const statusDiv = document.querySelector('.ufp-crawler-status');
                 const progressBar = document.getElementById('progress-bar');
@@ -1458,26 +1524,26 @@
                 const exportButton = document.getElementById('export-csv');
                 
                 if (statusDiv) {
-                    statusDiv.className = 'ufp-crawler-status info';
-                    statusDiv.textContent = `Crawling wird fortgesetzt... Seite ${currentPage}/${totalPages} (${crawledData.length} Produkte)`;
+                    if (statusDiv) statusDiv.className = 'ufp-crawler-status info';
+                    if (statusDiv) statusDiv.textContent = `Crawling wird fortgesetzt... Seite ${currentPage}/${totalPages} (${crawledData.length} Produkte)`;
                 }
                 
                 if (progressBar) {
                     const progress = (currentPage / totalPages) * 100;
-                    progressBar.style.width = progress + '%';
+                    if (progressBar) progressBar.style.width = progress + '%';
                 }
                 
                 if (startButton) {
-                    startButton.disabled = true;
-                    startButton.style.display = 'none';
+                    if (startButton) startButton.disabled = true;
+                    if (startButton) startButton.style.display = 'none';
                 }
                 
                 if (stopButton) {
-                    stopButton.style.display = 'block';
+                    if (stopButton) stopButton.style.display = 'block';
                 }
                 
                 if (exportButton) {
-                    exportButton.disabled = true;
+                    if (exportButton) exportButton.disabled = true;
                 }
                 
                 // Crawling automatisch fortsetzen
@@ -1500,7 +1566,7 @@
                     const statusDiv = document.querySelector('.ufp-crawler-status');
                     if (statusDiv) {
                         const lastCrawlDate = new Date(historicalData.timestamp).toLocaleDateString('de-DE');
-                        statusDiv.textContent = `Bereit zum Crawlen (Letzter Crawl: ${lastCrawlDate})`;
+                        if (statusDiv) statusDiv.textContent = `Bereit zum Crawlen (Letzter Crawl: ${lastCrawlDate})`;
                     }
                 }
             }
