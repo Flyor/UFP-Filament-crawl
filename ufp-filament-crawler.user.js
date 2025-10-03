@@ -3,7 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @version      1.6.0
 // @description  Crawlt UFP Filament-Produkte und extrahiert Produktdaten
-// @author       You
+// @author       Stonehiller Industries
 // @match        https://www.ufp.de/de_DE/printer-supplies-3d-verbrauchsmaterialien-pla-filament-3d/*
 // @updateURL    https://raw.githubusercontent.com/Flyor/UFP-Filament-crawl/main/ufp-filament-crawler.user.js
 // @downloadURL  https://raw.githubusercontent.com/Flyor/UFP-Filament-crawl/main/ufp-filament-crawler.user.js
