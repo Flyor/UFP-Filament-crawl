@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UFP Filament Crawler
 // @namespace    http://tampermonkey.net/
-// @version      1.6.1
+// @version      1.6.2
 // @description  Crawlt UFP Filament-Produkte und extrahiert Produktdaten
 // @author       Stonehiller Industries
 // @match        https://www.ufp.de/de_DE/printer-supplies-3d-verbrauchsmaterialien-pla-filament-3d/*
@@ -197,7 +197,7 @@
         ui.className = 'ufp-crawler-ui';
         ui.innerHTML = `
             <div class="ufp-crawler-header">
-                🕷️ UFP Filament Crawler v1.0.0
+                🕷️ UFP Filament Crawler v1.6.2
             </div>
             <div class="ufp-crawler-content">
                 <div class="ufp-crawler-status info">
@@ -706,6 +706,40 @@
         }
     }
 
+    // Prüfen ob ein Crawl als fehlerhaft eingestuft werden soll
+    function isCrawlFailed(currentData, historicalData) {
+        // Mindestanzahl von Produkten für einen erfolgreichen Crawl
+        const MIN_PRODUCTS_THRESHOLD = 50;
+        
+        // Wenn weniger als die Mindestanzahl von Produkten gefunden wurde
+        if (currentData.totalProducts < MIN_PRODUCTS_THRESHOLD) {
+            addLogEntry(`Weniger als ${MIN_PRODUCTS_THRESHOLD} Produkte gefunden (${currentData.totalProducts}) - Crawl als fehlerhaft eingestuft`, 'warning');
+            return true;
+        }
+        
+        // Wenn historische Daten vorhanden sind, prüfe auf drastische Abnahme
+        if (historicalData && historicalData.totalProducts > 0) {
+            const decreasePercentage = ((historicalData.totalProducts - currentData.totalProducts) / historicalData.totalProducts) * 100;
+            
+            // Wenn mehr als 80% der Produkte "verschwunden" sind, ist der Crawl wahrscheinlich fehlerhaft
+            if (decreasePercentage > 80) {
+                addLogEntry(`Drastische Abnahme der Produktanzahl erkannt (${decreasePercentage.toFixed(1)}% weniger) - Crawl als fehlerhaft eingestuft`, 'warning');
+                return true;
+            }
+        }
+        
+        // Prüfe auf zu viele leere Seiten im Verhältnis zur Gesamtseitenzahl
+        if (currentData.totalPages > 0) {
+            const emptyPagesRatio = emptyPageCount / currentData.totalPages;
+            if (emptyPagesRatio > 0.5) { // Mehr als 50% leere Seiten
+                addLogEntry(`Zu viele leere Seiten erkannt (${emptyPagesRatio.toFixed(1)}% der Seiten) - Crawl als fehlerhaft eingestuft`, 'warning');
+                return true;
+            }
+        }
+        
+        return false;
+    }
+
     // Änderungen im Vergleich zu historischen Daten erkennen
     function detectChanges(currentData, historicalData) {
         if (!historicalData) {
@@ -996,11 +1030,19 @@
             products: crawledData
         };
         
+        // Prüfe ob Crawl als fehlerhaft eingestuft werden soll
+        const isFailedCrawl = isCrawlFailed(currentData, historicalData);
+        
         // Änderungen erkennen
         const changes = detectChanges(currentData, historicalData);
         
-        // Historische Daten speichern
-        saveHistoricalData(currentData);
+        // Nur historische Daten speichern wenn Crawl erfolgreich war
+        if (!isFailedCrawl) {
+            saveHistoricalData(currentData);
+            addLogEntry('Historische Daten aktualisiert', 'success');
+        } else {
+            addLogEntry('Fehlerhafter Crawl erkannt - historische Daten bleiben unverändert', 'warning');
+        }
         
         // Crawl-Session löschen
         clearCrawlSession();
@@ -1017,9 +1059,13 @@
         // Detaillierte Statusmeldung mit Änderungen
         let statusMessage = `Crawling abgeschlossen! ${crawledData.length} Produkte von ${totalPages} Seiten gefunden.`;
         
-        if (changes.isFirstRun) {
+        if (isFailedCrawl) {
+            statusMessage += `\n⚠️ Fehlerhafter Crawl erkannt - historische Daten bleiben unverändert.`;
+            statusDiv.className = 'ufp-crawler-status warning';
+        } else if (changes.isFirstRun) {
             statusMessage += `\n🎉 Erster Crawl - ${changes.newProducts} Produkte erfasst.`;
             addLogEntry(`Erster Crawl abgeschlossen: ${changes.newProducts} Produkte erfasst`, 'success');
+            statusDiv.className = 'ufp-crawler-status success';
         } else {
             if (changes.newProducts > 0 || changes.removedProducts > 0 || changes.priceChanges > 0 || changes.availabilityChanges > 0) {
                 statusMessage += `\n📊 Änderungen erkannt:`;
@@ -1033,9 +1079,9 @@
                 statusMessage += `\n✅ Keine Änderungen seit dem letzten Crawl.`;
                 addLogEntry('Keine Änderungen seit dem letzten Crawl erkannt', 'success');
             }
+            statusDiv.className = 'ufp-crawler-status success';
         }
         
-        statusDiv.className = 'ufp-crawler-status success';
         statusDiv.textContent = statusMessage;
         
         // Console-Log für detaillierte Analyse
