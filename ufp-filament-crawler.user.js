@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UFP Filament Crawler
 // @namespace    http://tampermonkey.net/
-// @version      1.6.3
+// @version      1.6.5
 // @description  Crawlt UFP Filament-Produkte und extrahiert Produktdaten
 // @author       Stonehiller Industries
 // @match        https://www.ufp.de/de_DE/printer-supplies-3d-verbrauchsmaterialien-pla-filament-3d/*
@@ -197,7 +197,7 @@
         ui.className = 'ufp-crawler-ui';
         ui.innerHTML = `
             <div class="ufp-crawler-header">
-                🕷️ UFP Filament Crawler v1.6.3
+                🕷️ UFP Filament Crawler v1.6.5
             </div>
             <div class="ufp-crawler-content">
                 <div class="ufp-crawler-status info">
@@ -1311,22 +1311,25 @@
         // Header-Array erstellen - alte und neue Werte nebeneinander
         const headers = [
             'Name', 'Artikelnummer', 'Hersteller', 'Material', 'Farbe', 
-            'Durchmesser', 'Gewicht', 'URL'
+            'Durchmesser', 'Gewicht'
         ];
         
-        // Preis-Spalten: Alter Preis → Neuer Preis → Alter Preis pro kg → Neuer Preis pro kg
+        // Preis-Spalten: Alter Preis → Neuer Preis → Alter Preis pro kg → Neuer Preis pro kg → Preis-Änderung
         if (hasHistory) {
-            headers.push('Alter Preis', 'Neuer Preis', 'Alter Preis pro kg', 'Neuer Preis pro kg');
+            headers.push('Alter Preis', 'Neuer Preis', 'Alter Preis pro kg', 'Neuer Preis pro kg', 'Preis-Änderung');
         } else {
             headers.push('Preis', 'Preis pro kg');
         }
         
-        // Verfügbarkeits-Spalten: Alte Verfügbarkeit → Neue Verfügbarkeit → Alter Lagernd → Neuer Lagernd
+        // Verfügbarkeits-Spalten: Alte Verfügbarkeit → Neue Verfügbarkeit → Verfügbarkeits-Änderung → Alter Lagernd → Neuer Lagernd
         if (hasHistory) {
-            headers.push('Alte Verfügbarkeit', 'Neue Verfügbarkeit', 'Alter Lagernd', 'Neuer Lagernd', 'Status');
+            headers.push('Alte Verfügbarkeit', 'Neue Verfügbarkeit', 'Verfügbarkeits-Änderung', 'Alter Lagernd', 'Neuer Lagernd');
         } else {
             headers.push('Verfügbarkeit', 'Lagernd');
         }
+        
+        // URL am Ende
+        headers.push('URL');
         
         // Erstelle Map für schnellen Vergleich mit historischen Daten
         const historicalMap = new Map();
@@ -1347,25 +1350,31 @@
                     `"${product.material || ''}"`,
                     `"${product.color || ''}"`,
                     `"${product.diameter || ''}"`,
-                    `"${product.weight || ''}"`,
-                    `"${product.url || ''}"`
+                    `"${product.weight || ''}"`
                 ];
                 
                 // Preis-Informationen
                 if (hasHistory) {
                     const historicalProduct = historicalMap.get(product.sku);
                     if (historicalProduct) {
-                        // Alter Preis → Neuer Preis → Alter Preis pro kg → Neuer Preis pro kg
+                        // Alter Preis → Neuer Preis → Alter Preis pro kg → Neuer Preis pro kg → Preis-Änderung
                         row.push(`"${historicalProduct.price || ''}"`);
                         row.push(`"${product.price || ''}"`);
                         row.push(`"${historicalProduct.pricePerKg || ''}"`);
                         row.push(`"${product.pricePerKg || ''}"`);
+                        
+                        // Absolute Preis-Änderung berechnen
+                        const oldPrice = parseFloat(historicalProduct.price) || 0;
+                        const newPrice = parseFloat(product.price) || 0;
+                        const priceDiff = Math.abs(newPrice - oldPrice);
+                        row.push(`"${priceDiff > 0 ? priceDiff.toFixed(2) : ''}"`);
                     } else {
                         // Neues Produkt - nur neue Werte
                         row.push('""'); // Alter Preis
                         row.push(`"${product.price || ''}"`);
                         row.push('""'); // Alter Preis pro kg
                         row.push(`"${product.pricePerKg || ''}"`);
+                        row.push('""'); // Preis-Änderung
                     }
                 } else {
                     // Keine historischen Daten - nur aktuelle Werte
@@ -1377,34 +1386,34 @@
                 if (hasHistory) {
                     const historicalProduct = historicalMap.get(product.sku);
                     if (historicalProduct) {
-                        // Alte Verfügbarkeit → Neue Verfügbarkeit → Alter Lagernd → Neuer Lagernd → Status
+                        // Alte Verfügbarkeit → Neue Verfügbarkeit → Verfügbarkeits-Änderung → Alter Lagernd → Neuer Lagernd
                         row.push(`"${historicalProduct.availability || ''}"`);
                         row.push(`"${product.availability || ''}"`);
+                        
+                        // Absolute Verfügbarkeits-Änderung berechnen
+                        const oldAvailability = parseFloat(historicalProduct.availability) || 0;
+                        const newAvailability = parseFloat(product.availability) || 0;
+                        const availabilityDiff = Math.abs(newAvailability - oldAvailability);
+                        row.push(`"${availabilityDiff > 0 ? availabilityDiff : ''}"`);
+                        
                         row.push(`"${historicalProduct.inStock ? 'Ja' : 'Nein'}"`);
                         row.push(`"${product.inStock ? 'Ja' : 'Nein'}"`);
-                        
-                        // Status bestimmen
-                        let status = 'Unverändert';
-                        if (product.price !== historicalProduct.price) {
-                            status = 'Preis geändert';
-                        } else if (product.availability !== historicalProduct.availability || 
-                                  product.inStock !== historicalProduct.inStock) {
-                            status = 'Verfügbarkeit geändert';
-                        }
-                        row.push(`"${status}"`);
                     } else {
                         // Neues Produkt
                         row.push('""'); // Alte Verfügbarkeit
                         row.push(`"${product.availability || ''}"`);
+                        row.push('""'); // Verfügbarkeits-Änderung
                         row.push('""'); // Alter Lagernd
                         row.push(`"${product.inStock ? 'Ja' : 'Nein'}"`);
-                        row.push('"Neu"');
                     }
                 } else {
                     // Keine historischen Daten - nur aktuelle Werte
                     row.push(`"${product.availability || ''}"`);
                     row.push(`"${product.inStock ? 'Ja' : 'Nein'}"`);
                 }
+                
+                // URL am Ende hinzufügen
+                row.push(`"${product.url || ''}"`);
                 
                 return row.join(';');
             })
