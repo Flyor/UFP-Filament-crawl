@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UFP Filament Crawler
 // @namespace    http://tampermonkey.net/
-// @version      1.6.7
+// @version      1.6.9
 // @description  Crawlt UFP Filament-Produkte und extrahiert Produktdaten
 // @author       Stonehiller Industries
 // @match        https://www.ufp.de/de_DE/printer-supplies-3d-verbrauchsmaterialien-pla-filament-3d/*
@@ -197,7 +197,7 @@
         ui.className = 'ufp-crawler-ui';
         ui.innerHTML = `
             <div class="ufp-crawler-header">
-                🕷️ UFP Filament Crawler v1.6.7
+                🕷️ UFP Filament Crawler v1.6.9
             </div>
             <div class="ufp-crawler-content">
                 <div class="ufp-crawler-status info">
@@ -232,7 +232,7 @@
                 </button>
                 
                 <button class="ufp-crawler-button secondary" id="export-csv" disabled>
-                    📊 CSV exportieren
+                    📊 CSV (vollständig) exportieren
                 </button>
                 
                 <button class="ufp-crawler-button danger" id="clear-data">
@@ -809,6 +809,34 @@
         return null;
     }
 
+    // Letzten Crawl (vollständige Daten) laden
+    function loadLastCrawlData() {
+        try {
+            const stored = localStorage.getItem('ufp-crawler-last');
+            if (stored) {
+                return JSON.parse(stored);
+            }
+        } catch (error) {
+            console.error('Fehler beim Laden der letzten Crawl-Daten:', error);
+        }
+        return null;
+    }
+
+    // Letzten Crawl (vollständige Daten) speichern
+    function saveLastCrawlData(data) {
+        try {
+            const payload = {
+                timestamp: new Date().toISOString(),
+                totalPages: data.totalPages,
+                totalProducts: data.totalProducts,
+                products: data.products
+            };
+            localStorage.setItem('ufp-crawler-last', JSON.stringify(payload));
+        } catch (error) {
+            console.error('Fehler beim Speichern der letzten Crawl-Daten:', error);
+        }
+    }
+
     // Crawl-Session speichern
     function saveCrawlSession() {
         try {
@@ -1227,6 +1255,7 @@
         // Nur historische Daten speichern wenn Crawl erfolgreich war
         if (!isFailedCrawl) {
             saveHistoricalData(currentData);
+            saveLastCrawlData(currentData);
             addLogEntry('Historische Daten aktualisiert', 'success');
         } else {
             addLogEntry('Fehlerhafter Crawl erkannt - historische Daten bleiben unverändert', 'warning');
@@ -1451,6 +1480,13 @@
 
     // CSV exportieren
     function exportToCSV() {
+        const lastCrawl = loadLastCrawlData();
+        if (crawledData.length === 0 && lastCrawl && lastCrawl.products) {
+            crawledData = lastCrawl.products;
+            totalPages = lastCrawl.totalPages || totalPages;
+            addLogEntry('Letzte Crawl-Daten aus Speicher geladen', 'info');
+        }
+
         if (crawledData.length === 0) {
             alert('Keine Daten zum Exportieren vorhanden!');
             return;
@@ -1605,7 +1641,7 @@
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
         link.setAttribute('href', url);
-        link.setAttribute('download', `ufp-filament-crawler_${dateStr}_${timeStr}.csv`);
+        link.setAttribute('download', `ufp-filament-crawler_full_${dateStr}_${timeStr}.csv`);
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
@@ -1616,6 +1652,8 @@
             // Nur Änderungs-CSV erstellen wenn es Änderungen gibt
             if (changesToUse.newProducts > 0 || changesToUse.removedProducts > 0 || changesToUse.priceChanges > 0 || changesToUse.availabilityChanges > 0) {
                 createChangesCSV(crawledData, historicalData, changesToUse, dateStr, timeStr);
+            } else {
+                addLogEntry('📊 Keine Änderungs-CSV erstellt (0 Änderungen)', 'info');
             }
         }
         
@@ -1623,7 +1661,7 @@
         const statusDiv = document.querySelector('.ufp-crawler-status');
         if (statusDiv) {
             if (statusDiv) statusDiv.className = 'ufp-crawler-status success';
-            statusDiv.textContent = `CSV exportiert: ${crawledData.length} Produkte`;
+            statusDiv.textContent = `Vollständige CSV exportiert: ${crawledData.length} Produkte`;
         }
     }
 
@@ -1641,6 +1679,7 @@
             
             localStorage.removeItem('ufp-crawler-history');
             localStorage.removeItem('ufp-crawler-session');
+            localStorage.removeItem('ufp-crawler-last');
             updateStats();
             
             const statusDiv = document.querySelector('.ufp-crawler-status');
@@ -1734,6 +1773,7 @@
             } else {
                 // Normale Initialisierung
                 const historicalData = loadHistoricalData();
+                lastCrawlData = loadLastCrawlData();
                 if (historicalData) {
                     console.log('Letzter Crawl:', {
                         datum: new Date(historicalData.timestamp).toLocaleString('de-DE'),
@@ -1747,6 +1787,15 @@
                         const lastCrawlDate = new Date(historicalData.timestamp).toLocaleDateString('de-DE');
                         if (statusDiv) statusDiv.textContent = `Bereit zum Crawlen (Letzter Crawl: ${lastCrawlDate})`;
                     }
+                }
+
+                if (lastCrawlData && lastCrawlData.products && lastCrawlData.products.length > 0) {
+                    crawledData = lastCrawlData.products;
+                    totalPages = lastCrawlData.totalPages || totalPages;
+                    updateStats();
+
+                    const exportButton = document.getElementById('export-csv');
+                    if (exportButton) exportButton.disabled = false;
                 }
             }
             
