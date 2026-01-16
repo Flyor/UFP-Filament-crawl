@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UFP Filament Crawler
 // @namespace    http://tampermonkey.net/
-// @version      1.6.12
+// @version      1.6.13
 // @description  Crawlt UFP Filament-Produkte und extrahiert Produktdaten
 // @author       Stonehiller Industries
 // @match        https://www.ufp.de/de_DE/printer-supplies-3d-verbrauchsmaterialien-pla-filament-3d/*
@@ -22,6 +22,7 @@
     let lastCrawlData = null;
     let crawlSession = null;
     let logEntries = [];
+    let crawledSkuSet = new Set();
 
     // CSS für die UI
     const styles = `
@@ -197,7 +198,7 @@
         ui.className = 'ufp-crawler-ui';
         ui.innerHTML = `
             <div class="ufp-crawler-header">
-                🕷️ UFP Filament Crawler v1.6.12
+                🕷️ UFP Filament Crawler v1.6.13
             </div>
             <div class="ufp-crawler-content">
                 <div class="ufp-crawler-status info">
@@ -340,6 +341,34 @@
         const slugMatch = url.match(/\/([^\/\?]+)\.html/i);
         if (slugMatch) return slugMatch[1];
         return '';
+    }
+
+    function getProductKey(product) {
+        if (product && product.sku) return product.sku;
+        if (product && product.url) return product.url;
+        if (product && product.name) return product.name;
+        return '';
+    }
+
+    function addProductsDeduped(products) {
+        const newProducts = [];
+        let duplicates = 0;
+
+        products.forEach(product => {
+            const key = getProductKey(product);
+            if (key && crawledSkuSet.has(key)) {
+                duplicates++;
+                return;
+            }
+            if (key) crawledSkuSet.add(key);
+            newProducts.push(product);
+        });
+
+        if (newProducts.length > 0) {
+            crawledData = crawledData.concat(newProducts);
+        }
+
+        return { newProducts, duplicates };
     }
 
     function enrichProductFromName(product) {
@@ -1042,8 +1071,11 @@
             
             // Aktuelle Seite crawlen
             const products = await extractProductDataWithRetry();
-            crawledData = crawledData.concat(products);
+            const { duplicates } = addProductsDeduped(products);
             addLogEntry(`${products.length} Produkte auf Seite ${currentPage} gefunden`, 'success');
+            if (duplicates > 0) {
+                addLogEntry(`Dubletten übersprungen: ${duplicates}`, 'warning');
+            }
             
             // Leere Seiten erkennen
             if (products.length === 0) {
@@ -1192,8 +1224,11 @@
         try {
             // Aktuelle Seite crawlen
             const products = await extractProductDataWithRetry();
-            crawledData = crawledData.concat(products);
+            const { duplicates } = addProductsDeduped(products);
             addLogEntry(`${products.length} Produkte auf Seite ${currentPage} gefunden`, 'success');
+            if (duplicates > 0) {
+                addLogEntry(`Dubletten übersprungen: ${duplicates}`, 'warning');
+            }
             
             // Leere Seiten erkennen
             if (products.length === 0) {
@@ -1722,6 +1757,7 @@
     function clearData() {
         if (confirm('Alle gecrawlten Daten und historischen Daten löschen?')) {
             crawledData = [];
+            crawledSkuSet = new Set();
             isCrawling = false;
             currentPage = 1;
             totalPages = 0;
@@ -1781,6 +1817,7 @@
                 currentPage = session.currentPage;
                 totalPages = session.totalPages;
                 crawledData = session.crawledData || [];
+                crawledSkuSet = new Set(crawledData.map(getProductKey).filter(Boolean));
                 emptyPageCount = session.emptyPageCount || 0;
                 
                 addLogEntry(`Session wiederhergestellt: ${crawledData.length} Produkte, Seite ${currentPage}/${totalPages}, leere Seiten: ${emptyPageCount}`, 'info');
@@ -1850,6 +1887,7 @@
 
                 if (lastCrawlData && lastCrawlData.products && lastCrawlData.products.length > 0) {
                     crawledData = lastCrawlData.products;
+                    crawledSkuSet = new Set(crawledData.map(getProductKey).filter(Boolean));
                     totalPages = lastCrawlData.totalPages || totalPages;
                     updateStats();
 
