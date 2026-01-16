@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UFP Filament Crawler
 // @namespace    http://tampermonkey.net/
-// @version      1.6.9
+// @version      1.6.12
 // @description  Crawlt UFP Filament-Produkte und extrahiert Produktdaten
 // @author       Stonehiller Industries
 // @match        https://www.ufp.de/de_DE/printer-supplies-3d-verbrauchsmaterialien-pla-filament-3d/*
@@ -197,7 +197,7 @@
         ui.className = 'ufp-crawler-ui';
         ui.innerHTML = `
             <div class="ufp-crawler-header">
-                🕷️ UFP Filament Crawler v1.6.9
+                🕷️ UFP Filament Crawler v1.6.12
             </div>
             <div class="ufp-crawler-content">
                 <div class="ufp-crawler-status info">
@@ -235,6 +235,10 @@
                     📊 CSV (vollständig) exportieren
                 </button>
                 
+                <button class="ufp-crawler-button secondary" id="export-changes-csv" disabled>
+                    📝 CSV (Änderungen) exportieren
+                </button>
+                
                 <button class="ufp-crawler-button danger" id="clear-data">
                     🗑️ Daten löschen
                 </button>
@@ -254,11 +258,13 @@
         const startCrawlBtn = document.getElementById('start-crawl');
         const stopCrawlBtn = document.getElementById('stop-crawl');
         const exportCsvBtn = document.getElementById('export-csv');
+        const exportChangesCsvBtn = document.getElementById('export-changes-csv');
         const clearDataBtn = document.getElementById('clear-data');
         
         if (startCrawlBtn) startCrawlBtn.addEventListener('click', startCrawling);
         if (stopCrawlBtn) stopCrawlBtn.addEventListener('click', stopCrawling);
         if (exportCsvBtn) exportCsvBtn.addEventListener('click', exportToCSV);
+        if (exportChangesCsvBtn) exportChangesCsvBtn.addEventListener('click', exportChangesCSV);
         if (clearDataBtn) clearDataBtn.addEventListener('click', clearData);
         
         // Initiale Log-Nachricht
@@ -1137,6 +1143,31 @@
         lastProductCount = 0;
         
         addLogEntry('Crawling gestartet', 'info');
+
+        const currentUrl = new URL(window.location.href);
+        const urlPage = parseInt(currentUrl.searchParams.get('page')) || 1;
+
+        // Sicherstellen, dass bei einem frischen Crawl auf Seite 1 gestartet wird
+        if (crawledData.length === 0 && urlPage > 1) {
+            addLogEntry(`Startseite ist Seite ${urlPage} - springe zu Seite 1`, 'warning');
+            currentUrl.searchParams.set('page', '1');
+
+            const startButton = document.getElementById('start-crawl');
+            const stopButton = document.getElementById('stop-crawl');
+            const statusDiv = document.querySelector('.ufp-crawler-status');
+
+            if (startButton) startButton.disabled = false;
+            if (startButton) startButton.style.display = 'block';
+            if (startButton) startButton.textContent = '🚀 Crawling starten';
+            if (stopButton) stopButton.style.display = 'none';
+            if (statusDiv) statusDiv.className = 'ufp-crawler-status warning';
+            if (statusDiv) statusDiv.textContent = 'Crawling wartet: Wechsel zu Seite 1...';
+
+            window.location.href = currentUrl.toString();
+            return;
+        }
+
+        currentPage = urlPage;
         isCrawling = true;
         const startButton = document.getElementById('start-crawl');
         const stopButton = document.getElementById('stop-crawl');
@@ -1271,6 +1302,8 @@
         if (startButton) startButton.style.display = 'block';
         if (stopButton) stopButton.style.display = 'none';
         if (exportButton) exportButton.disabled = false;
+        const exportChangesButton = document.getElementById('export-changes-csv');
+        if (exportChangesButton) exportChangesButton.disabled = false;
         if (progressBar) progressBar.style.width = '100%';
         
         // Detaillierte Statusmeldung mit Änderungen
@@ -1465,7 +1498,8 @@
         ].join('\n');
         
         // Änderungs-CSV herunterladen
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const csvWithBom = '\uFEFF' + csvContent;
+        const blob = new Blob([csvWithBom], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
         link.setAttribute('href', url);
@@ -1478,77 +1512,37 @@
         addLogEntry(`📊 Änderungs-CSV erstellt: ${changesData.length} Änderungen`);
     }
 
-    // CSV exportieren
-    function exportToCSV() {
-        const lastCrawl = loadLastCrawlData();
-        if (crawledData.length === 0 && lastCrawl && lastCrawl.products) {
-            crawledData = lastCrawl.products;
-            totalPages = lastCrawl.totalPages || totalPages;
-            addLogEntry('Letzte Crawl-Daten aus Speicher geladen', 'info');
-        }
-
-        if (crawledData.length === 0) {
-            alert('Keine Daten zum Exportieren vorhanden!');
-            return;
-        }
-        
-        // Datum für Dateiname
-        const now = new Date();
-        const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
-        const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-'); // HH-MM-SS
-        
-        // Verwende die ursprünglichen historischen Daten aus finishCrawling()
-        // Falls originalHistoricalData nicht verfügbar ist, lade die aktuellen historischen Daten
-        const historicalData = originalHistoricalData || loadHistoricalData();
+    function buildFullCsv(crawlData, historicalData, changesToUse, now) {
         const hasHistory = historicalData && historicalData.products;
-        
-        // Verwende die bereits berechneten Änderungen aus finishCrawling()
-        // Falls lastChanges noch nicht gesetzt ist (Export vor finishCrawling), berechne Änderungen jetzt
-        let changesToUse = lastChanges;
-        if (!changesToUse && hasHistory) {
-            const currentData = {
-                totalPages: totalPages,
-                totalProducts: crawledData.length,
-                products: crawledData
-            };
-            changesToUse = detectChanges(currentData, historicalData);
-        }
-        
-        // Header-Array erstellen - alte und neue Werte nebeneinander
         const headers = [
-            'Name', 'Artikelnummer', 'Hersteller', 'Material', 'Farbe', 
+            'Name', 'Artikelnummer', 'Hersteller', 'Material', 'Farbe',
             'Durchmesser', 'Gewicht'
         ];
-        
-        // Preis-Spalten: Alter Preis → Neuer Preis → Alter Preis pro kg → Neuer Preis pro kg → Preis-Änderung
+
         if (hasHistory) {
             headers.push('Alter Preis', 'Neuer Preis', 'Alter Preis pro kg', 'Neuer Preis pro kg', 'Preis-Änderung');
         } else {
             headers.push('Preis', 'Preis pro kg');
         }
-        
-        // Verfügbarkeits-Spalten: Alte Verfügbarkeit → Neue Verfügbarkeit → Verfügbarkeits-Änderung → Alter Lagernd → Neuer Lagernd
+
         if (hasHistory) {
             headers.push('Alte Verfügbarkeit', 'Neue Verfügbarkeit', 'Verfügbarkeits-Änderung', 'Alter Lagernd', 'Neuer Lagernd');
         } else {
             headers.push('Verfügbarkeit', 'Lagernd');
         }
-        
-        // URL am Ende
+
         headers.push('URL');
-        
-        // Erstelle Map für schnellen Vergleich mit historischen Daten
+
         const historicalMap = new Map();
         if (hasHistory) {
             historicalData.products.forEach(product => {
                 historicalMap.set(product.sku, product);
             });
         }
-        
+
         const csvContent = [
             headers.join(';'),
-            ...crawledData.map(product => {
-                // Basis-Informationen (immer vorhanden)
+            ...crawlData.map(product => {
                 const row = [
                     `"${product.name || ''}"`,
                     `"${product.sku || ''}"`,
@@ -1558,110 +1552,169 @@
                     `"${product.diameter || ''}"`,
                     `"${product.weight || ''}"`
                 ];
-                
-                // Preis-Informationen
+
                 if (hasHistory) {
                     const historicalProduct = historicalMap.get(product.sku);
                     if (historicalProduct) {
-                        // Alter Preis → Neuer Preis → Alter Preis pro kg → Neuer Preis pro kg → Preis-Änderung
                         row.push(`"${historicalProduct.price || ''}"`);
                         row.push(`"${product.price || ''}"`);
                         row.push(`"${historicalProduct.pricePerKg || ''}"`);
                         row.push(`"${product.pricePerKg || ''}"`);
-                        
-                        // Absolute Preis-Änderung berechnen
+
                         const oldPrice = parseFloat(historicalProduct.price) || 0;
                         const newPrice = parseFloat(product.price) || 0;
                         const priceDiff = Math.abs(newPrice - oldPrice);
                         row.push(`"${priceDiff > 0 ? priceDiff.toFixed(2) : ''}"`);
                     } else {
-                        // Neues Produkt - nur neue Werte
-                        row.push('""'); // Alter Preis
+                        row.push('""');
                         row.push(`"${product.price || ''}"`);
-                        row.push('""'); // Alter Preis pro kg
+                        row.push('""');
                         row.push(`"${product.pricePerKg || ''}"`);
-                        row.push('""'); // Preis-Änderung
+                        row.push('""');
                     }
                 } else {
-                    // Keine historischen Daten - nur aktuelle Werte
                     row.push(`"${product.price || ''}"`);
                     row.push(`"${product.pricePerKg || ''}"`);
                 }
-                
-                // Verfügbarkeits-Informationen
+
                 if (hasHistory) {
                     const historicalProduct = historicalMap.get(product.sku);
                     if (historicalProduct) {
-                        // Alte Verfügbarkeit → Neue Verfügbarkeit → Verfügbarkeits-Änderung → Alter Lagernd → Neuer Lagernd
                         row.push(`"${historicalProduct.availability || ''}"`);
                         row.push(`"${product.availability || ''}"`);
-                        
-                        // Absolute Verfügbarkeits-Änderung berechnen
+
                         const oldAvailability = parseFloat(historicalProduct.availability) || 0;
                         const newAvailability = parseFloat(product.availability) || 0;
                         const availabilityDiff = Math.abs(newAvailability - oldAvailability);
                         row.push(`"${availabilityDiff > 0 ? availabilityDiff : ''}"`);
-                        
+
                         row.push(`"${historicalProduct.inStock ? 'Ja' : 'Nein'}"`);
                         row.push(`"${product.inStock ? 'Ja' : 'Nein'}"`);
                     } else {
-                        // Neues Produkt
-                        row.push('""'); // Alte Verfügbarkeit
+                        row.push('""');
                         row.push(`"${product.availability || ''}"`);
-                        row.push('""'); // Verfügbarkeits-Änderung
-                        row.push('""'); // Alter Lagernd
+                        row.push('""');
+                        row.push('""');
                         row.push(`"${product.inStock ? 'Ja' : 'Nein'}"`);
                     }
                 } else {
-                    // Keine historischen Daten - nur aktuelle Werte
                     row.push(`"${product.availability || ''}"`);
                     row.push(`"${product.inStock ? 'Ja' : 'Nein'}"`);
                 }
-                
-                // URL am Ende hinzufügen
+
                 row.push(`"${product.url || ''}"`);
-                
                 return row.join(';');
             })
         ];
-        
-        // Änderungs-Zusammenfassung hinzufügen wenn historische Daten vorhanden
+
         if (hasHistory && changesToUse) {
-            csvContent.push(''); // Leere Zeile
+            csvContent.push('');
             csvContent.push('# Änderungen seit letztem Crawl:');
             csvContent.push(`# +${changesToUse.newProducts} neue Produkte, -${changesToUse.removedProducts} entfernte, ${changesToUse.priceChanges} Preisänderungen, ${changesToUse.availabilityChanges} Verfügbarkeitsänderungen`);
             csvContent.push(`# Crawl-Datum: ${now.toLocaleString('de-DE')}`);
             csvContent.push(`# Letzter Crawl: ${new Date(historicalData.timestamp).toLocaleString('de-DE')}`);
         }
-        
-        const finalCsvContent = csvContent.join('\n');
-        
-        // CSV-Datei herunterladen
-        const blob = new Blob([finalCsvContent], { type: 'text/csv;charset=utf-8;' });
+
+        return csvContent.join('\n');
+    }
+
+    function exportFullCSV() {
+        const lastCrawl = loadLastCrawlData();
+        let dataToExport = crawledData;
+        let pagesToExport = totalPages;
+
+        if (dataToExport.length === 0 && lastCrawl && lastCrawl.products) {
+            dataToExport = lastCrawl.products;
+            pagesToExport = lastCrawl.totalPages || pagesToExport;
+            addLogEntry('Letzte Crawl-Daten aus Speicher geladen', 'info');
+        }
+
+        if (dataToExport.length === 0) {
+            alert('Keine Daten zum Exportieren vorhanden!');
+            return;
+        }
+
+        const now = new Date();
+        const dateStr = now.toISOString().split('T')[0];
+        const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
+
+        const historicalData = originalHistoricalData || loadHistoricalData();
+        const hasHistory = historicalData && historicalData.products;
+
+        let changesToUse = lastChanges;
+        if (!changesToUse && hasHistory) {
+            const currentData = {
+                totalPages: pagesToExport,
+                totalProducts: dataToExport.length,
+                products: dataToExport
+            };
+            changesToUse = detectChanges(currentData, historicalData);
+        }
+
+        const finalCsvContent = buildFullCsv(dataToExport, historicalData, changesToUse, now);
+        const csvWithBom = '\uFEFF' + finalCsvContent;
+        const blob = new Blob([csvWithBom], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
+        const filename = `ufp-filament-crawler_full_${dateStr}_${timeStr}.csv`;
         link.setAttribute('href', url);
-        link.setAttribute('download', `ufp-filament-crawler_full_${dateStr}_${timeStr}.csv`);
+        link.setAttribute('download', filename);
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        
-        // Separate Änderungs-CSV erstellen wenn historische Daten vorhanden
-        if (hasHistory && changesToUse) {
-            // Nur Änderungs-CSV erstellen wenn es Änderungen gibt
-            if (changesToUse.newProducts > 0 || changesToUse.removedProducts > 0 || changesToUse.priceChanges > 0 || changesToUse.availabilityChanges > 0) {
-                createChangesCSV(crawledData, historicalData, changesToUse, dateStr, timeStr);
-            } else {
-                addLogEntry('📊 Keine Änderungs-CSV erstellt (0 Änderungen)', 'info');
-            }
-        }
-        
-        // Status aktualisieren
+
+        addLogEntry(`📥 Vollständige CSV erstellt (${dataToExport.length} Produkte): ${filename}`, 'success');
+
         const statusDiv = document.querySelector('.ufp-crawler-status');
         if (statusDiv) {
             if (statusDiv) statusDiv.className = 'ufp-crawler-status success';
-            statusDiv.textContent = `Vollständige CSV exportiert: ${crawledData.length} Produkte`;
+            statusDiv.textContent = `Vollständige CSV exportiert: ${dataToExport.length} Produkte`;
+        }
+    }
+
+    // CSV exportieren (vollständig)
+    function exportToCSV() {
+        exportFullCSV();
+    }
+
+    // CSV exportieren (Änderungen)
+    function exportChangesCSV() {
+        const lastCrawl = loadLastCrawlData();
+        let dataToUse = crawledData;
+
+        if (dataToUse.length === 0 && lastCrawl && lastCrawl.products) {
+            dataToUse = lastCrawl.products;
+            addLogEntry('Letzte Crawl-Daten aus Speicher geladen', 'info');
+        }
+
+        const historicalData = originalHistoricalData || loadHistoricalData();
+        const hasHistory = historicalData && historicalData.products;
+
+        if (!hasHistory) {
+            alert('Keine historischen Daten vorhanden. Änderungs-CSV ist erst ab dem zweiten Crawl möglich.');
+            return;
+        }
+
+        let changesToUse = lastChanges;
+        if (!changesToUse) {
+            const currentData = {
+                totalPages: totalPages,
+                totalProducts: dataToUse.length,
+                products: dataToUse
+            };
+            changesToUse = detectChanges(currentData, historicalData);
+        }
+
+        const now = new Date();
+        const dateStr = now.toISOString().split('T')[0];
+        const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
+
+        if (changesToUse.newProducts > 0 || changesToUse.removedProducts > 0 || changesToUse.priceChanges > 0 || changesToUse.availabilityChanges > 0) {
+            createChangesCSV(dataToUse, historicalData, changesToUse, dateStr, timeStr);
+        } else {
+            addLogEntry('📊 Keine Änderungs-CSV erstellt (0 Änderungen)', 'info');
+            alert('Keine Änderungen seit dem letzten Crawl.');
         }
     }
 
@@ -1685,6 +1738,7 @@
             const statusDiv = document.querySelector('.ufp-crawler-status');
             const progressBar = document.getElementById('progress-bar');
             const exportButton = document.getElementById('export-csv');
+            const exportChangesButton = document.getElementById('export-changes-csv');
             const startButton = document.getElementById('start-crawl');
             const stopButton = document.getElementById('stop-crawl');
             
@@ -1692,6 +1746,7 @@
             if (statusDiv) statusDiv.textContent = 'Bereit zum Crawlen';
             if (progressBar) progressBar.style.width = '0%';
             if (exportButton) exportButton.disabled = true;
+            if (exportChangesButton) exportChangesButton.disabled = true;
             
             if (startButton) {
                 if (startButton) startButton.disabled = false;
@@ -1763,6 +1818,10 @@
                 if (exportButton) {
                     if (exportButton) exportButton.disabled = true;
                 }
+                const exportChangesButton = document.getElementById('export-changes-csv');
+                if (exportChangesButton) {
+                    if (exportChangesButton) exportChangesButton.disabled = true;
+                }
                 
                 // Crawling automatisch fortsetzen
                 setTimeout(() => {
@@ -1795,7 +1854,9 @@
                     updateStats();
 
                     const exportButton = document.getElementById('export-csv');
+                    const exportChangesButton = document.getElementById('export-changes-csv');
                     if (exportButton) exportButton.disabled = false;
+                    if (exportChangesButton) exportChangesButton.disabled = false;
                 }
             }
             
