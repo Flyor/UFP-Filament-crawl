@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UFP Filament Crawler
 // @namespace    http://tampermonkey.net/
-// @version      1.6.13
+// @version      1.6.14
 // @description  Crawlt UFP Filament-Produkte und extrahiert Produktdaten
 // @author       Stonehiller Industries
 // @match        https://www.ufp.de/de_DE/printer-supplies-3d-verbrauchsmaterialien-pla-filament-3d/*
@@ -198,7 +198,7 @@
         ui.className = 'ufp-crawler-ui';
         ui.innerHTML = `
             <div class="ufp-crawler-header">
-                🕷️ UFP Filament Crawler v1.6.13
+                🕷️ UFP Filament Crawler v1.6.14
             </div>
             <div class="ufp-crawler-content">
                 <div class="ufp-crawler-status info">
@@ -369,6 +369,24 @@
         }
 
         return { newProducts, duplicates };
+    }
+
+    function dedupeProducts(products) {
+        const unique = [];
+        const seen = new Set();
+        let duplicates = 0;
+
+        products.forEach(product => {
+            const key = getProductKey(product);
+            if (key && seen.has(key)) {
+                duplicates++;
+                return;
+            }
+            if (key) seen.add(key);
+            unique.push(product);
+        });
+
+        return { unique, duplicates };
     }
 
     function enrichProductFromName(product) {
@@ -1176,6 +1194,13 @@
         
         addLogEntry('Crawling gestartet', 'info');
 
+        const existingSession = loadCrawlSession();
+        if (!existingSession && crawledData.length > 0) {
+            addLogEntry('Vorherige Crawl-Daten werden für neuen Lauf zurückgesetzt', 'warning');
+            crawledData = [];
+            crawledSkuSet = new Set();
+        }
+
         const currentUrl = new URL(window.location.href);
         const urlPage = parseInt(currentUrl.searchParams.get('page')) || 1;
 
@@ -1669,6 +1694,11 @@
             return;
         }
 
+        const { unique: uniqueData, duplicates: exportDuplicates } = dedupeProducts(dataToExport);
+        if (exportDuplicates > 0) {
+            addLogEntry(`Dubletten im Export entfernt: ${exportDuplicates}`, 'warning');
+        }
+
         const now = new Date();
         const dateStr = now.toISOString().split('T')[0];
         const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
@@ -1680,13 +1710,13 @@
         if (!changesToUse && hasHistory) {
             const currentData = {
                 totalPages: pagesToExport,
-                totalProducts: dataToExport.length,
-                products: dataToExport
+                totalProducts: uniqueData.length,
+                products: uniqueData
             };
             changesToUse = detectChanges(currentData, historicalData);
         }
 
-        const finalCsvContent = buildFullCsv(dataToExport, historicalData, changesToUse, now);
+        const finalCsvContent = buildFullCsv(uniqueData, historicalData, changesToUse, now);
         const csvWithBom = '\uFEFF' + finalCsvContent;
         const blob = new Blob([csvWithBom], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
@@ -1699,12 +1729,12 @@
         link.click();
         document.body.removeChild(link);
 
-        addLogEntry(`📥 Vollständige CSV erstellt (${dataToExport.length} Produkte): ${filename}`, 'success');
+        addLogEntry(`📥 Vollständige CSV erstellt (${uniqueData.length} Produkte): ${filename}`, 'success');
 
         const statusDiv = document.querySelector('.ufp-crawler-status');
         if (statusDiv) {
             if (statusDiv) statusDiv.className = 'ufp-crawler-status success';
-            statusDiv.textContent = `Vollständige CSV exportiert: ${dataToExport.length} Produkte`;
+            statusDiv.textContent = `Vollständige CSV exportiert: ${uniqueData.length} Produkte`;
         }
     }
 
@@ -1731,12 +1761,17 @@
             return;
         }
 
+        const { unique: uniqueData, duplicates: exportDuplicates } = dedupeProducts(dataToUse);
+        if (exportDuplicates > 0) {
+            addLogEntry(`Dubletten im Export entfernt: ${exportDuplicates}`, 'warning');
+        }
+
         let changesToUse = lastChanges;
         if (!changesToUse) {
             const currentData = {
                 totalPages: totalPages,
-                totalProducts: dataToUse.length,
-                products: dataToUse
+                totalProducts: uniqueData.length,
+                products: uniqueData
             };
             changesToUse = detectChanges(currentData, historicalData);
         }
@@ -1746,7 +1781,7 @@
         const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
 
         if (changesToUse.newProducts > 0 || changesToUse.removedProducts > 0 || changesToUse.priceChanges > 0 || changesToUse.availabilityChanges > 0) {
-            createChangesCSV(dataToUse, historicalData, changesToUse, dateStr, timeStr);
+            createChangesCSV(uniqueData, historicalData, changesToUse, dateStr, timeStr);
         } else {
             addLogEntry('📊 Keine Änderungs-CSV erstellt (0 Änderungen)', 'info');
             alert('Keine Änderungen seit dem letzten Crawl.');
