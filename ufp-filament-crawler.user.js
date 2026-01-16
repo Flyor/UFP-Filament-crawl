@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UFP Filament Crawler
 // @namespace    http://tampermonkey.net/
-// @version      1.6.5
+// @version      1.6.7
 // @description  Crawlt UFP Filament-Produkte und extrahiert Produktdaten
 // @author       Stonehiller Industries
 // @match        https://www.ufp.de/de_DE/printer-supplies-3d-verbrauchsmaterialien-pla-filament-3d/*
@@ -197,7 +197,7 @@
         ui.className = 'ufp-crawler-ui';
         ui.innerHTML = `
             <div class="ufp-crawler-header">
-                🕷️ UFP Filament Crawler v1.6.5
+                🕷️ UFP Filament Crawler v1.6.7
             </div>
             <div class="ufp-crawler-content">
                 <div class="ufp-crawler-status info">
@@ -304,11 +304,296 @@
         logContainer.scrollTop = logContainer.scrollHeight;
     }
 
+    // Hilfsfunktionen für robustes Extrahieren
+    function getFirstText(element, selectors) {
+        for (const selector of selectors) {
+            const el = element.querySelector(selector);
+            if (el && el.textContent) {
+                const text = el.textContent.trim();
+                if (text) return text;
+            }
+        }
+        return '';
+    }
+
+    function getFirstAttr(element, selectorAttrPairs) {
+        for (const [selector, attr] of selectorAttrPairs) {
+            const el = selector ? element.querySelector(selector) : element;
+            if (el) {
+                const value = el.getAttribute(attr);
+                if (value) return value.trim();
+            }
+        }
+        return '';
+    }
+
+    function extractSkuFromUrl(url) {
+        if (!url) return '';
+        const numericMatch = url.match(/(\d{4,})/);
+        if (numericMatch) return numericMatch[1];
+        const slugMatch = url.match(/\/([^\/\?]+)\.html/i);
+        if (slugMatch) return slugMatch[1];
+        return '';
+    }
+
+    function enrichProductFromName(product) {
+        if (!product || !product.name) return;
+
+        // Hersteller aus dem Namen extrahieren
+        const manufacturerPatterns = [
+            // Spezifische Hersteller
+            /(PRUSAMENT|PRUSA)\s/i,
+            /(POLYMAKER|POLYMAKER3D)\s/i,
+            /(HATCHBOX|HATCHBOX3D)\s/i,
+            /(SUNLU|SUNLU3D)\s/i,
+            /(OVERTURE|OVERTURE3D)\s/i,
+            /(AMZ3D|AMZ)\s/i,
+            /(ERYONE|ERYONE3D)\s/i,
+            /(GEEETECH|GEEETECH3D)\s/i,
+            /(ELEGOO|ELEGOO3D)\s/i,
+            /(CREALITY|CREALITY3D|CREALITY\s+ENDER|CREALITY\s+CR|CREALITY\s+HYPER\s+SERIE)\s/i,
+            /(ANYCUBIC|ANYCUBIC3D)\s/i,
+            /(FLASHFORGE|FLASHFORGE3D)\s/i,
+            /(BAMBU|BAMBU3D)\s/i,
+            /(PRINTBED|PRINTBED3D)\s/i,
+            /(ESUN|ESUN3D)\s/i,
+            /(AZUREFILM|AZUREFILM3D)\s/i,
+            /(VERBATIM|VERBATIM3D)\s/i,
+            /(DREMEL|DREMEL\s+DIGILAB)\s/i,
+            /(SOLEYIN|SOLEYIN\s+ULTRA)\s/i,
+            // Fallback für andere Hersteller (am Anfang des Namens)
+            /^([A-Z][A-Z\s]{2,20})\s/i
+        ];
+
+        for (const pattern of manufacturerPatterns) {
+            const match = product.name.match(pattern);
+            if (match) {
+                let manufacturer = match[1].trim();
+                manufacturer = manufacturer.replace(/\s+3D\s*$/i, '');
+                manufacturer = manufacturer.replace(/\s+ENDER\s*$/i, '');
+                manufacturer = manufacturer.replace(/\s+CR\s*$/i, '');
+                manufacturer = manufacturer.replace(/\s+HYPER\s+SERIE\s*$/i, '');
+                manufacturer = manufacturer.replace(/\s+DIGILAB\s*$/i, '');
+                manufacturer = manufacturer.replace(/\s+ULTRA\s*$/i, '');
+                product.manufacturer = manufacturer;
+                break;
+            }
+        }
+
+        // Material aus dem Namen extrahieren
+        const materialMatch = product.name.match(/(PLA\+?|EPLA|ABS|PETG|TPU|WOOD|METAL|CARBON)/i);
+        if (materialMatch) {
+            product.material = materialMatch[1].toUpperCase();
+        }
+
+        // Farbe aus dem Namen extrahieren
+        const colorPatterns = [
+            // Spezielle Polymaker Farben
+            /(CHARCOAL\s*BLACK|COTTON\s*WHITE|LAVA\s*RED|FORREST\s*GREEN|ARCTIC\s*TEAL|SAVANNAH\s*YELLOW|FOSSIL\s*GREY|SUNRISE\s*ORANGE|SAPPHIRE\s*BLUE|LAVENDER\s*PURPLE|EARTH\s*BROWN|SAKURA\s*PINK|WOOD\s*BROWN|PEANUT)/i,
+            /(ARMY\s*BEIGE|MUTED\s*GREEN|SKY\s*BLUE|LOTUS\s*PINK|ASH\s*GREY|ELECTRIC\s*INDIGO|FOREST\s*GREEN|LIME\s*GREEN|PASTEL\s*MINT|PASTEL\s*BANANA|PASTEL\s*CANDY|PASTEL\s*ICE|PASTEL\s*PEACH|PASTEL\s*PEANUT|PASTEL\s*WATERMELON|PASTEL\s*PEZRIWINKLE)/i,
+            /(ARMY\s*BLUE|ARMY\s*BROWN|ARMY\s*DARK\s*GREEN|ARMY\s*LIGHT\s*GREEN|MUTED\s*BLUE|ARMY\s*PURPLE|ARMY\s*RED|MUTED\s*PURPLE|MUTED\s*RED|MUTED\s*WHITE)/i,
+            // ESUN Farben
+            /(MILKY\s*WHITE|LIGHT\s*KHAKI|DEEP\s*BLACK|MORANDI\s*GREEN|DARK\s*GREY|LIGHT\s*BLUE|ALMOND\s*YELLOW|PEACH\s*PINK|MINT\s*GREEN|LILAC|TANGERINE|STRAWBERRY\s*RED|MATCHA\s*GREEN|MORANDI\s*PURPLE)/i,
+            /(BONE\s*WHITE|SPACE\s*BLUE|VERY\s*PERI|MORNING\s*GLOW|SCORCHING\s*SUN|FOREST|UNIVERSE|CORAL)/i,
+            // Creality Farben
+            /(MATTE\s*GREY|MATTE\s*GYPSUM\s*WHITE|MATTE\s*AVOCADO\s*GREEN|MATTE\s*STRAWBERRY\s*RED|MATTE\s*NAVY\s*BLUE|MATTE\s*BLACK|IVORY\s*WHITE|MATTE\s*SKIN\s*COLOR)/i,
+            /(SILK\s*SILVER|SILK\s*RED\s*COPPER|SILK\s*PURPLE|SILK\s*WHITE|SILK\s*GOLD|SILK\s*BLUE|SILK\s*GOLDEN|SILK\s*RAINBOW|SILK\s*COPPER|SILK\s*GOLDEN\s*RED|SILK\s*GOLDEN\s*SILVER|SILK\s*BLUE\s*GREEN|SILK\s*PINK\s*PURPLE|SILK\s*YELLOW\s*BLUE|SILK\s*BLUE\s*GREEN)/i,
+            // Flashforge Farben
+            /(MATTE\s*LIGHT\s*GREY|MATTE\s*GREY\s*PINK|NATURE|SILK\s*GOLDEN|SILK\s*COPPER)/i,
+            // Polymaker Silk Farben
+            /(SILK\s*BRASS|SILK\s*BRONZE|SILK\s*CHROME|SILK\s*LIME|SILK\s*LIGHT\s*BLUE|SILK\s*MAGENTA|SILK\s*ROSE|SILK\s*PERIDOT\s*GREEN|SILK\s*QUARTZ\s*PINK|SILK\s*ROSE\s*GOLD|SILK\s*TEAL|SILK\s*DARK\s*BLUE|SILK\s*GUNMETAL\s*GREY|SILK\s*PERIWINKLE)/i,
+            // Polymaker Spezialfarben
+            /(MARBLE\s*SLATE\s*GREY|MARBLE\s*SANDSTONE|MARBLE\s*LIMESTONE|MARBLE\s*BRICK|DUAL\s*MATTE\s*CAMOUFLAGE|DUAL\s*MATTE\s*CAMELEON|DUAL\s*MATTE\s*FLAMINGO|DUAL\s*MATTE\s*FOGGY\s*ORANGE|DUAL\s*MATTE\s*FOGGY|DUAL\s*MATTE\s*SHADOW\s*BLACK|DUAL\s*MATTE\s*GLACIER\s*BLUE|DUAL\s*MATTE\s*MIXED\s*BERRIES|DUAL\s*MATTE\s*SHADOW\s*ORANGE|DUAL\s*MATTE\s*SHADOW\s*RED|DUAL\s*MATTE\s*SUNRISE)/i,
+            /(GRADIENT\s*SATIN\s*RAINBOW|GRADIENT\s*MATTE\s*WOOD|GRADIENT\s*MATTE\s*SPRING|GRADIENT\s*MATTE\s*FALL|GRADIENT\s*MATTE\s*SUMMER|GRADIENT\s*MATTE\s*CAPPUCCINO|GRADIENT\s*TRANSL\s*RAINBOW|GRADIENT\s*PASTEL\s*RAINBOW|GRADIENT\s*LUMINOUS\s*RAINBOW)/i,
+            // Polymaker Luminous/Glow/Neon
+            /(LUMINOUS\s*BLUE|LUMINOUS\s*GREEN|LUMINOUS\s*PINK|LUMINOUS\s*ORANGE|LUMINOUS\s*YELLOW|GLOW\s*BLUE|GLOW\s*GREEN|NEON\s*GREEN|NEON\s*ORANGE|NEON\s*YELLOW|NEON\s*MAGENTA|NEON\s*RED)/i,
+            // Polymaker Starlight
+            /(STARLIGHT\s*MARS|STARLIGHT\s*MERCURY|STARLIGHT\s*METEOR|STARLIGHT\s*NEBULA|STARLIGHT\s*JUPITER|STARLIGHT\s*NEPTUNE|STARLIGHT\s*AURORA|STARLIGHT\s*TWILIGHT|STARLIGHT\s*COMET)/i,
+            // Polymaker Dual Silk
+            /(DUAL\s*SILK\s*AUGERGINE|DUAL\s*SILK\s*BANQUET|DUAL\s*SILK\s*CARIBBEAN\s*SEA|DUAL\s*SILK\s*BELUGA|DUAL\s*SILK\s*CAMELEON|DUAL\s*SILK\s*CROWN|DUAL\s*SILK\s*JADEITE|DUAL\s*SILK\s*SOVEREIGN|DUAL\s*SILK\s*SUNSET)/i,
+            // Polymaker Celestial/Galaxy
+            /(CELESTIAL\s*BLUE|CELESTIAL\s*GREEN|CELESTIAL\s*PURPLE|GALAXY\s*DARK\s*GREEN|GALAXY\s*DARK\s*RED|GALAXY\s*BLACK|GALAXY\s*DARK\s*BLUE|GALAXY\s*DARK\s*GREY)/i,
+            // ESUN Chameleon/Magic
+            /(CHAMELEON\s*TECH\s*BLACK|CHAMELEON\s*POLARIS|CHAMELEON\s*RASBERRY\s*RED|CHAMELEON\s*NEBULA\s*PURPLE|CHAMELEON\s*GALAXY\s*BLUE|MAGIC\s*DARK\s*TWINKL\s*GOLD|MAGIC\s*DARK\s*TWINKL\s*BLUE|MAGIC\s*DARK\s*TWINKL\s*GREEN|MAGIC\s*DARK\s*TWINKL\s*PURPLE)/i,
+            // ESUN Silk Candy
+            /(SILK\s*CANDY\s*RED\s*GOLD\s*BLUE|SILK\s*CANDY\s*BLUE\s*GREEN|SILK\s*CANDY\s*SILVER\s*BLUE|SILK\s*CANDY\s*GOLDBLUEGREEN|SILK\s*CANDY\s*RED\s*GOLD|SILK\s*CANDY\s*SILVER\s*BLACK)/i,
+            // ESUN Silk Magic
+            /(SILK\s*MAGIC\s*BLACK\s*RED|SILK\s*MAGIC\s*PURPLE\s*GOLD|SILK\s*MAGIC\s*BLACK\s*PURPLE|SILK\s*MAGIC\s*BLACK\s*GOLD|SILK\s*MAGIC\s*BLACK\s*GREEN|SILK\s*MAGIC\s*RED\s*GOLD|SILK\s*MAGIC\s*RED\s*GREEN|SILK\s*MAGIC\s*BLUE\s*SILVER)/i,
+            // Transparente Farben
+            /(TRANSPARENT\s*ORANGE|TRANSPARENT\s*GREEN|TRANSPARENT\s*BLUE|TRANSPARENT\s*RED|TRANSL\s*BLUE\s*GREEN|TRANSL\s*BLUE\s*WHITE|TRANSL\s*YEL\s*GRN\s*BLUE|TRANSL\s*ORA\s*GRY\s*BLUE|TRANSL\s*BLUE\s*PURPLE|TRANSL\s*RAINBOW\s*B|TRANSL\s*RAINBOW\s*A|TRANSL\s*PURPLE\s*BLUE\s*CYAN|TRANSL\s*PURPLE\s*BLUE\s*GREY|TRANSL\s*PURPLE\s*RED|TRANSL\s*YELLOW\s*PINK|TRANSL\s*FLAME\s*CRYSTAL|TRANSL\s*CYAN\s*CRYSTAL|TRANSL\s*GREEN\s*CRYSTAL|TRANSL\s*BLUE\s*CRYSTAL|TRANSL\s*PINK\s*CRYSTAL)/i,
+            // Rock/Stone Farben
+            /(ROCK\s*GRANITE|ROCK\s*HORNFELS|ROCK\s*BLUESCHIST|ROCK\s*SANDSTONE|ROCK\s*LIMESTONE|ROCK\s*QUARTZITE|ROCK\s*PEGMATITE|ROCK\s*TIGER\s*PORPHYRY)/i,
+            // Dual/Marble Farben
+            /(DUAL\s*NEON\s*YELLOW\s*PINK|DUAL\s*BLUE\s*GREEN|DUAL\s*LIGHT\s*DARK\s*GREY|DUAL\s*GREEN\s*PURPLE|DUAL\s*RED\s*BLUE|DUAL\s*BLACK\s*WHITE|DUAL\s*RED\s*YELLOW|DUAL\s*PURPLE\s*BLUE|DUAL\s*RED\s*BLACK|DUAL\s*GREEN\s*BLUE|DUAL\s*PURPLE\s*YELLOW|DUAL\s*GREEN\s*PINK|MARBLE)/i,
+            // Spezielle Effekte
+            /(SILK|MATTE|COLD|MILKY|PEARL|METALLIC|GLOW|NEON|FLUORESCENT|LUMINOUS|RAINBOW|CLEAR|TRANSPARENT|TRANSLUCENT|DUAL|GRADIENT|CHAMELEON|MAGIC|CANDY|STARLIGHT|CELESTIAL|GALAXY|ROCK|MARBLE)/i,
+            // Einfache Grundfarben (als Fallback)
+            /(BLACK|WHITE|BLUE|RED|GREEN|YELLOW|ORANGE|GREY|GRAY|SILVER|GOLDEN|GOLD|PINK|PURPLE|BROWN|VIOLET|CYAN|MAGENTA|TEAL|LIME|BEIGE|CREAM|NATURAL|IVORY|BONE|COLD\s*WHITE|COOL\s*WHITE|WARM\s*WHITE|BRIGHT\s*ORANGE|BRIGHT\s*YELLOW|BRIGHT\s*GREEN|DARK\s*BLUE|DARK\s*RED|DARK\s*GREEN|DARK\s*GREY|DARK\s*PURPLE|LIGHT\s*BLUE|LIGHT\s*RED|LIGHT\s*GREEN|LIGHT\s*GREY|LIGHT\s*PURPLE|LIGHT\s*BROWN|NAVY\s*BLUE|SKY\s*BLUE|ROYAL\s*BLUE|BURGUNDY|CRIMSON|SCARLET|FOREST\s*GREEN|LIME\s*GREEN|EMERALD|CHARCOAL|PLATINUM|TITANIUM|LAVENDER|FUCHSIA|OLIVE\s*GREEN|FIRE\s*ENGINE|FIRE\s*ENG\s*RED|POWER\s*TOOL\s*RED|POWER\s*TOOL\s*YELLOW|POWER\s*TOOL\s*GREEN|POWER\s*TOOL\s*TEAL|ARMY\s*GREEN|SPACE\s*BLUE|VERY\s*PERI|VIVA\s*MAGENTA|PEACH\s*FUZZ|SKIN|BOT\s*GREEN|OCEAN\s*BLUE|PINE\s*YELLOW|MAC\s*PURPLE|ROSEHIP|STRAWBERRY)/i
+        ];
+
+        for (const pattern of colorPatterns) {
+            const match = product.name.match(pattern);
+            if (match) {
+                product.color = match[1].toUpperCase();
+                break;
+            }
+        }
+
+        // Durchmesser aus dem Namen extrahieren
+        const diameterMatch = product.name.match(/(1,75|2,85|3,0)/);
+        if (diameterMatch) {
+            product.diameter = diameterMatch[1] + 'mm';
+        }
+
+        // Gewicht aus dem Namen extrahieren
+        const weightMatch = product.name.match(/(\d+(?:,\d+)?)\s*(kg|gr|g)/i);
+        if (weightMatch) {
+            let weightInGrams = parseFloat(weightMatch[1].replace(',', '.'));
+            if (weightMatch[2].toLowerCase() === 'kg') {
+                weightInGrams = weightInGrams * 1000;
+            }
+            product.weight = Math.round(weightInGrams).toString();
+            product.weightInKg = weightInGrams / 1000;
+        }
+
+        // Preis pro kg berechnen
+        if (product.price && product.weightInKg) {
+            const priceValue = parseFloat(product.price.replace(',', '.'));
+            const pricePerKg = priceValue / product.weightInKg;
+            product.pricePerKg = pricePerKg.toFixed(2).replace('.', ',');
+        } else {
+            product.pricePerKg = '';
+        }
+    }
+
+    function extractProductsFromJsonLd() {
+        const scripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
+        const products = [];
+        const seenKeys = new Set();
+
+        const normalizePrice = value => {
+            if (value === undefined || value === null) return '';
+            const text = String(value).replace(/[^\d,\.]/g, '').trim();
+            if (!text) return '';
+            return text.replace('.', ',');
+        };
+
+        const addProduct = product => {
+            if (!product) return;
+            const key = product.sku || product.url || product.name;
+            if (!key || seenKeys.has(key)) return;
+            seenKeys.add(key);
+            enrichProductFromName(product);
+            if (product.name && product.price && product.sku) {
+                products.push(product);
+            }
+        };
+
+        const walk = node => {
+            if (!node) return;
+            if (Array.isArray(node)) {
+                node.forEach(walk);
+                return;
+            }
+            if (typeof node !== 'object') return;
+
+            const type = node['@type'];
+            const typeList = Array.isArray(type) ? type : [type];
+            if (typeList.includes('Product')) {
+                const offersRaw = node.offers || {};
+                const offers = Array.isArray(offersRaw) ? offersRaw[0] : offersRaw;
+                const availability = offers.availability || '';
+                const product = {
+                    name: node.name || '',
+                    sku: node.sku || node.productID || node.mpn || '',
+                    manufacturer: (node.brand && (node.brand.name || node.brand)) || '',
+                    price: normalizePrice(offers.price),
+                    pricePerKg: '',
+                    availability: /instock/i.test(availability) ? '1' : '0',
+                    inStock: /instock/i.test(availability),
+                    url: node.url || offers.url || '',
+                    imageUrl: node.image || ''
+                };
+
+                if (!product.sku) {
+                    product.sku = extractSkuFromUrl(product.url);
+                }
+
+                addProduct(product);
+            }
+
+            if (node.itemListElement) walk(node.itemListElement);
+            if (node.item) walk(node.item);
+
+            Object.keys(node).forEach(key => {
+                if (key !== '@context' && key !== '@type') {
+                    walk(node[key]);
+                }
+            });
+        };
+
+        scripts.forEach(script => {
+            try {
+                const data = JSON.parse(script.textContent);
+                walk(data);
+            } catch (error) {
+                console.warn('JSON-LD konnte nicht geparst werden:', error);
+            }
+        });
+
+        if (products.length > 0) {
+            addLogEntry(`JSON-LD Fallback: ${products.length} Produkte erkannt`, 'info');
+        }
+
+        return products;
+    }
+
+    async function waitForProductElements(timeoutMs = 5000, intervalMs = 250) {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+            if (getProductElements().length > 0) {
+                return true;
+            }
+            await new Promise(resolve => setTimeout(resolve, intervalMs));
+        }
+        return false;
+    }
+
+    function getProductElements() {
+        const selectors = [
+            '.product-result .js-product-col-item',
+            '.product-result .product-col-item',
+            '.product-listing .product-tile',
+            '.product-grid .product-tile',
+            '.product-tile',
+            '[data-product-id]',
+            '[data-sku]'
+        ];
+
+        const elementSet = new Set();
+        selectors.forEach(selector => {
+            document.querySelectorAll(selector).forEach(el => elementSet.add(el));
+        });
+
+        const excludedContainers = [
+            '.recently-viewed',
+            '.product-carousel',
+            '.swiper',
+            '.slider'
+        ];
+
+        return Array.from(elementSet).filter(el => {
+            return !excludedContainers.some(selector => el.closest(selector));
+        });
+    }
+
     // Produktdaten extrahieren
     function extractProductData() {
         const products = [];
-        // Nur Produkte aus dem Hauptbereich, nicht aus "Zuletzt angesehenen Artikeln"
-        const productElements = document.querySelectorAll('.product-result .js-product-col-item');
+        const productElements = getProductElements();
+        if (productElements.length === 0) {
+            addLogEntry('Keine Produkt-Elemente gefunden (Selector-Update nötig?)', 'warning');
+        }
         
         // Optimierte Verarbeitung mit for-Schleife statt forEach
         for (let i = 0; i < productElements.length; i++) {
@@ -317,43 +602,61 @@
                 const product = {};
                 
                 // Produktname und Artikelnummer in einem Zug
-                const titleElement = element.querySelector('.article-title a');
-                const skuElement = element.querySelector('.sku');
+                const titleElement = element.querySelector('.article-title a, .product-name a, .product-title a');
+                const skuElement = element.querySelector('.sku, .product-number, .product-id, .product-sku');
                 
                 if (titleElement) {
                     product.name = titleElement.textContent.trim();
                 }
                 
                 if (skuElement) {
-                    product.sku = skuElement.textContent.replace('Art.-Nr.: ', '').trim();
+                    product.sku = skuElement.textContent
+                        .replace('Art.-Nr.: ', '')
+                        .replace('Artikelnummer:', '')
+                        .trim();
+                } else {
+                    const skuFromData = element.dataset.sku ||
+                        element.dataset.productId ||
+                        element.getAttribute('data-sku') ||
+                        element.getAttribute('data-product-id');
+                    if (skuFromData) {
+                        product.sku = skuFromData.trim();
+                    }
                 }
                 
                 // Preis
-                const priceElement = element.querySelector('.price-sales');
-                if (priceElement) {
-                    // Preis extrahieren: /STK entfernen, € entfernen, Komma als Dezimaltrennung
-                    let priceText = priceElement.textContent
+                const priceElement = element.querySelector('.price-sales, .price, .product-price, .price-default, .price--default');
+                const priceTextFromAttr = getFirstAttr(element, [
+                    ['[data-price]', 'data-price'],
+                    ['[data-product-price]', 'data-product-price']
+                ]);
+                const rawPriceText = priceTextFromAttr || (priceElement ? priceElement.textContent : '');
+                if (rawPriceText) {
+                    let priceText = rawPriceText
                         .replace(/\/STK/g, '')  // /STK entfernen
-                        .replace('€', '')       // € entfernen
+                        .replace(/[^\d,\.]/g, '') // Nur Zahlen, Komma, Punkt
                         .trim();
-                    
-                    // Komma als Dezimaltrennung beibehalten (deutsches Format)
-                    product.price = priceText;
+                    if (priceText) {
+                        product.price = priceText.replace('.', ',');
+                    }
                 }
                 
                 // Verfügbarkeit
-                const stockElement = element.querySelector('.product-stock .stock');
+                const stockElement = element.querySelector('.product-stock .stock, .availability, .stock, .stock-status, .delivery-status');
                 if (stockElement) {
-                    const stockText = stockElement.textContent.trim();
+                    const stockText = stockElement.textContent.trim().toLowerCase();
                     if (stockText.includes('verfügbar:')) {
-                        const availabilityMatch = stockText.match(/verfügbar:\s*(\d+)/);
+                        const availabilityMatch = stockText.match(/verfügbar:\s*(\d+)/i);
                         if (availabilityMatch) {
                             product.availability = availabilityMatch[1];
                             product.inStock = true;
                         }
-                    } else if (stockText.includes('nicht lagernd')) {
+                    } else if (stockText.includes('nicht lagernd') || stockText.includes('nicht verfügbar')) {
                         product.availability = '0';
                         product.inStock = false;
+                    } else if (stockText.includes('lagernd') || stockText.includes('sofort')) {
+                        product.availability = '1';
+                        product.inStock = true;
                     } else {
                         product.availability = '0';
                         product.inStock = false;
@@ -364,180 +667,25 @@
                 }
                 
                 // Produktlink
-                const linkElement = element.querySelector('.article-title a');
+                const linkElement = element.querySelector('.article-title a, .product-name a, .product-title a, a');
                 if (linkElement) {
                     product.url = linkElement.href;
                 }
                 
                 // Produktbild
-                const imgElement = element.querySelector('.image img');
+                const imgElement = element.querySelector('.image img, .product-image img, img');
                 if (imgElement) {
                     product.imageUrl = imgElement.src || imgElement.getAttribute('data-src');
                 }
                 
-                // Hersteller aus dem Namen extrahieren
-                if (product.name) {
-                    // Bekannte Hersteller-Muster (flexibler - nicht nur am Anfang)
-                    const manufacturerPatterns = [
-                        // Spezifische Hersteller
-                        /(PRUSAMENT|PRUSA)\s/i,
-                        /(POLYMAKER|POLYMAKER3D)\s/i,
-                        /(HATCHBOX|HATCHBOX3D)\s/i,
-                        /(SUNLU|SUNLU3D)\s/i,
-                        /(OVERTURE|OVERTURE3D)\s/i,
-                        /(AMZ3D|AMZ)\s/i,
-                        /(ERYONE|ERYONE3D)\s/i,
-                        /(GEEETECH|GEEETECH3D)\s/i,
-                        /(ELEGOO|ELEGOO3D)\s/i,
-                        /(CREALITY|CREALITY3D|CREALITY\s+ENDER|CREALITY\s+CR|CREALITY\s+HYPER\s+SERIE)\s/i,
-                        /(ANYCUBIC|ANYCUBIC3D)\s/i,
-                        /(FLASHFORGE|FLASHFORGE3D)\s/i,
-                        /(BAMBU|BAMBU3D)\s/i,
-                        /(PRINTBED|PRINTBED3D)\s/i,
-                        /(ESUN|ESUN3D)\s/i,
-                        /(AZUREFILM|AZUREFILM3D)\s/i,
-                        /(VERBATIM|VERBATIM3D)\s/i,
-                        /(DREMEL|DREMEL\s+DIGILAB)\s/i,
-                        /(SOLEYIN|SOLEYIN\s+ULTRA)\s/i,
-                        // Fallback für andere Hersteller (am Anfang des Namens)
-                        /^([A-Z][A-Z\s]{2,20})\s/i
-                    ];
-                    
-                    for (const pattern of manufacturerPatterns) {
-                        const match = product.name.match(pattern);
-                        if (match) {
-                            let manufacturer = match[1].trim();
-                            // Bereinige Hersteller-Namen
-                            manufacturer = manufacturer.replace(/\s+3D\s*$/i, '');
-                            manufacturer = manufacturer.replace(/\s+ENDER\s*$/i, '');
-                            manufacturer = manufacturer.replace(/\s+CR\s*$/i, '');
-                            manufacturer = manufacturer.replace(/\s+HYPER\s+SERIE\s*$/i, '');
-                            manufacturer = manufacturer.replace(/\s+DIGILAB\s*$/i, '');
-                            manufacturer = manufacturer.replace(/\s+ULTRA\s*$/i, '');
-                            product.manufacturer = manufacturer;
-                            break;
-                        }
-                    }
-                }
+                enrichProductFromName(product);
                 
-                // Material aus dem Namen extrahieren
-                if (product.name) {
-                    const materialMatch = product.name.match(/(PLA\+?|EPLA|ABS|PETG|TPU|WOOD|METAL|CARBON)/i);
-                    if (materialMatch) {
-                        product.material = materialMatch[1].toUpperCase();
-                    }
+                if (!product.sku) {
+                    product.sku = extractSkuFromUrl(product.url);
                 }
-                
-                // Farbe aus dem Namen extrahieren
-                if (product.name) {
-                    // Umfassende Farb-Erkennung basierend auf realen Produktnamen
-                    const colorPatterns = [
-                        // Spezielle Polymaker Farben
-                        /(CHARCOAL\s*BLACK|COTTON\s*WHITE|LAVA\s*RED|FORREST\s*GREEN|ARCTIC\s*TEAL|SAVANNAH\s*YELLOW|FOSSIL\s*GREY|SUNRISE\s*ORANGE|SAPPHIRE\s*BLUE|LAVENDER\s*PURPLE|EARTH\s*BROWN|SAKURA\s*PINK|WOOD\s*BROWN|PEANUT)/i,
-                        /(ARMY\s*BEIGE|MUTED\s*GREEN|SKY\s*BLUE|LOTUS\s*PINK|ASH\s*GREY|ELECTRIC\s*INDIGO|FOREST\s*GREEN|LIME\s*GREEN|PASTEL\s*MINT|PASTEL\s*BANANA|PASTEL\s*CANDY|PASTEL\s*ICE|PASTEL\s*PEACH|PASTEL\s*PEANUT|PASTEL\s*WATERMELON|PASTEL\s*PEZRIWINKLE)/i,
-                        /(ARMY\s*BLUE|ARMY\s*BROWN|ARMY\s*DARK\s*GREEN|ARMY\s*LIGHT\s*GREEN|MUTED\s*BLUE|ARMY\s*PURPLE|ARMY\s*RED|MUTED\s*PURPLE|MUTED\s*RED|MUTED\s*WHITE)/i,
-                        
-                        // ESUN Farben
-                        /(MILKY\s*WHITE|LIGHT\s*KHAKI|DEEP\s*BLACK|MORANDI\s*GREEN|DARK\s*GREY|LIGHT\s*BLUE|ALMOND\s*YELLOW|PEACH\s*PINK|MINT\s*GREEN|LILAC|TANGERINE|STRAWBERRY\s*RED|MATCHA\s*GREEN|MORANDI\s*PURPLE)/i,
-                        /(BONE\s*WHITE|SPACE\s*BLUE|VERY\s*PERI|MORNING\s*GLOW|SCORCHING\s*SUN|FOREST|UNIVERSE|CORAL)/i,
-                        
-                        // Creality Farben
-                        /(MATTE\s*GREY|MATTE\s*GYPSUM\s*WHITE|MATTE\s*AVOCADO\s*GREEN|MATTE\s*STRAWBERRY\s*RED|MATTE\s*NAVY\s*BLUE|MATTE\s*BLACK|IVORY\s*WHITE|MATTE\s*SKIN\s*COLOR)/i,
-                        /(SILK\s*SILVER|SILK\s*RED\s*COPPER|SILK\s*PURPLE|SILK\s*WHITE|SILK\s*GOLD|SILK\s*BLUE|SILK\s*GOLDEN|SILK\s*RAINBOW|SILK\s*COPPER|SILK\s*GOLDEN\s*RED|SILK\s*GOLDEN\s*SILVER|SILK\s*BLUE\s*GREEN|SILK\s*PINK\s*PURPLE|SILK\s*YELLOW\s*BLUE|SILK\s*BLUE\s*GREEN)/i,
-                        
-                        // Flashforge Farben
-                        /(MATTE\s*LIGHT\s*GREY|MATTE\s*GREY\s*PINK|NATURE|SILK\s*GOLDEN|SILK\s*COPPER)/i,
-                        
-                        // Polymaker Silk Farben
-                        /(SILK\s*BRASS|SILK\s*BRONZE|SILK\s*CHROME|SILK\s*LIME|SILK\s*LIGHT\s*BLUE|SILK\s*MAGENTA|SILK\s*ROSE|SILK\s*PERIDOT\s*GREEN|SILK\s*QUARTZ\s*PINK|SILK\s*ROSE\s*GOLD|SILK\s*TEAL|SILK\s*DARK\s*BLUE|SILK\s*GUNMETAL\s*GREY|SILK\s*PERIWINKLE)/i,
-                        
-                        // Polymaker Spezialfarben
-                        /(MARBLE\s*SLATE\s*GREY|MARBLE\s*SANDSTONE|MARBLE\s*LIMESTONE|MARBLE\s*BRICK|DUAL\s*MATTE\s*CAMOUFLAGE|DUAL\s*MATTE\s*CAMELEON|DUAL\s*MATTE\s*FLAMINGO|DUAL\s*MATTE\s*FOGGY\s*ORANGE|DUAL\s*MATTE\s*FOGGY|DUAL\s*MATTE\s*SHADOW\s*BLACK|DUAL\s*MATTE\s*GLACIER\s*BLUE|DUAL\s*MATTE\s*MIXED\s*BERRIES|DUAL\s*MATTE\s*SHADOW\s*ORANGE|DUAL\s*MATTE\s*SHADOW\s*RED|DUAL\s*MATTE\s*SUNRISE)/i,
-                        /(GRADIENT\s*SATIN\s*RAINBOW|GRADIENT\s*MATTE\s*WOOD|GRADIENT\s*MATTE\s*SPRING|GRADIENT\s*MATTE\s*FALL|GRADIENT\s*MATTE\s*SUMMER|GRADIENT\s*MATTE\s*CAPPUCCINO|GRADIENT\s*TRANSL\s*RAINBOW|GRADIENT\s*PASTEL\s*RAINBOW|GRADIENT\s*LUMINOUS\s*RAINBOW)/i,
-                        
-                        // Polymaker Luminous/Glow/Neon
-                        /(LUMINOUS\s*BLUE|LUMINOUS\s*GREEN|LUMINOUS\s*PINK|LUMINOUS\s*ORANGE|LUMINOUS\s*YELLOW|GLOW\s*BLUE|GLOW\s*GREEN|NEON\s*GREEN|NEON\s*ORANGE|NEON\s*YELLOW|NEON\s*MAGENTA|NEON\s*RED)/i,
-                        
-                        // Polymaker Starlight
-                        /(STARLIGHT\s*MARS|STARLIGHT\s*MERCURY|STARLIGHT\s*METEOR|STARLIGHT\s*NEBULA|STARLIGHT\s*JUPITER|STARLIGHT\s*NEPTUNE|STARLIGHT\s*AURORA|STARLIGHT\s*TWILIGHT|STARLIGHT\s*COMET)/i,
-                        
-                        // Polymaker Dual Silk
-                        /(DUAL\s*SILK\s*AUGERGINE|DUAL\s*SILK\s*BANQUET|DUAL\s*SILK\s*CARIBBEAN\s*SEA|DUAL\s*SILK\s*BELUGA|DUAL\s*SILK\s*CAMELEON|DUAL\s*SILK\s*CROWN|DUAL\s*SILK\s*JADEITE|DUAL\s*SILK\s*SOVEREIGN|DUAL\s*SILK\s*SUNSET)/i,
-                        
-                        // Polymaker Celestial/Galaxy
-                        /(CELESTIAL\s*BLUE|CELESTIAL\s*GREEN|CELESTIAL\s*PURPLE|GALAXY\s*DARK\s*GREEN|GALAXY\s*DARK\s*RED|GALAXY\s*BLACK|GALAXY\s*DARK\s*BLUE|GALAXY\s*DARK\s*GREY)/i,
-                        
-                        // ESUN Chameleon/Magic
-                        /(CHAMELEON\s*TECH\s*BLACK|CHAMELEON\s*POLARIS|CHAMELEON\s*RASBERRY\s*RED|CHAMELEON\s*NEBULA\s*PURPLE|CHAMELEON\s*GALAXY\s*BLUE|MAGIC\s*DARK\s*TWINKL\s*GOLD|MAGIC\s*DARK\s*TWINKL\s*BLUE|MAGIC\s*DARK\s*TWINKL\s*GREEN|MAGIC\s*DARK\s*TWINKL\s*PURPLE)/i,
-                        
-                        // ESUN Silk Candy
-                        /(SILK\s*CANDY\s*RED\s*GOLD\s*BLUE|SILK\s*CANDY\s*BLUE\s*GREEN|SILK\s*CANDY\s*SILVER\s*BLUE|SILK\s*CANDY\s*GOLDBLUEGREEN|SILK\s*CANDY\s*RED\s*GOLD|SILK\s*CANDY\s*SILVER\s*BLACK)/i,
-                        
-                        // ESUN Silk Magic
-                        /(SILK\s*MAGIC\s*BLACK\s*RED|SILK\s*MAGIC\s*PURPLE\s*GOLD|SILK\s*MAGIC\s*BLACK\s*PURPLE|SILK\s*MAGIC\s*BLACK\s*GOLD|SILK\s*MAGIC\s*BLACK\s*GREEN|SILK\s*MAGIC\s*RED\s*GOLD|SILK\s*MAGIC\s*RED\s*GREEN|SILK\s*MAGIC\s*BLUE\s*SILVER)/i,
-                        
-                        // Transparente Farben
-                        /(TRANSPARENT\s*ORANGE|TRANSPARENT\s*GREEN|TRANSPARENT\s*BLUE|TRANSPARENT\s*RED|TRANSL\s*BLUE\s*GREEN|TRANSL\s*BLUE\s*WHITE|TRANSL\s*YEL\s*GRN\s*BLUE|TRANSL\s*ORA\s*GRY\s*BLUE|TRANSL\s*BLUE\s*PURPLE|TRANSL\s*RAINBOW\s*B|TRANSL\s*RAINBOW\s*A|TRANSL\s*PURPLE\s*BLUE\s*CYAN|TRANSL\s*PURPLE\s*BLUE\s*GREY|TRANSL\s*PURPLE\s*RED|TRANSL\s*YELLOW\s*PINK|TRANSL\s*FLAME\s*CRYSTAL|TRANSL\s*CYAN\s*CRYSTAL|TRANSL\s*GREEN\s*CRYSTAL|TRANSL\s*BLUE\s*CRYSTAL|TRANSL\s*PINK\s*CRYSTAL)/i,
-                        
-                        // Rock/Stone Farben
-                        /(ROCK\s*GRANITE|ROCK\s*HORNFELS|ROCK\s*BLUESCHIST|ROCK\s*SANDSTONE|ROCK\s*LIMESTONE|ROCK\s*QUARTZITE|ROCK\s*PEGMATITE|ROCK\s*TIGER\s*PORPHYRY)/i,
-                        
-                        // Dual/Marble Farben
-                        /(DUAL\s*NEON\s*YELLOW\s*PINK|DUAL\s*BLUE\s*GREEN|DUAL\s*LIGHT\s*DARK\s*GREY|DUAL\s*GREEN\s*PURPLE|DUAL\s*RED\s*BLUE|DUAL\s*BLACK\s*WHITE|DUAL\s*RED\s*YELLOW|DUAL\s*PURPLE\s*BLUE|DUAL\s*RED\s*BLACK|DUAL\s*GREEN\s*BLUE|DUAL\s*PURPLE\s*YELLOW|DUAL\s*GREEN\s*PINK|MARBLE)/i,
-                        
-                        // Spezielle Effekte
-                        /(SILK|MATTE|COLD|MILKY|PEARL|METALLIC|GLOW|NEON|FLUORESCENT|LUMINOUS|RAINBOW|CLEAR|TRANSPARENT|TRANSLUCENT|DUAL|GRADIENT|CHAMELEON|MAGIC|CANDY|STARLIGHT|CELESTIAL|GALAXY|ROCK|MARBLE)/i,
-                        
-                        // Einfache Grundfarben (als Fallback)
-                        /(BLACK|WHITE|BLUE|RED|GREEN|YELLOW|ORANGE|GREY|GRAY|SILVER|GOLDEN|GOLD|PINK|PURPLE|BROWN|VIOLET|CYAN|MAGENTA|TEAL|LIME|BEIGE|CREAM|NATURAL|IVORY|BONE|COLD\s*WHITE|COOL\s*WHITE|WARM\s*WHITE|BRIGHT\s*ORANGE|BRIGHT\s*YELLOW|BRIGHT\s*GREEN|DARK\s*BLUE|DARK\s*RED|DARK\s*GREEN|DARK\s*GREY|DARK\s*PURPLE|LIGHT\s*BLUE|LIGHT\s*RED|LIGHT\s*GREEN|LIGHT\s*GREY|LIGHT\s*PURPLE|LIGHT\s*BROWN|NAVY\s*BLUE|SKY\s*BLUE|ROYAL\s*BLUE|BURGUNDY|CRIMSON|SCARLET|FOREST\s*GREEN|LIME\s*GREEN|EMERALD|CHARCOAL|PLATINUM|TITANIUM|LAVENDER|FUCHSIA|OLIVE\s*GREEN|FIRE\s*ENGINE|FIRE\s*ENG\s*RED|POWER\s*TOOL\s*RED|POWER\s*TOOL\s*YELLOW|POWER\s*TOOL\s*GREEN|POWER\s*TOOL\s*TEAL|ARMY\s*GREEN|SPACE\s*BLUE|VERY\s*PERI|VIVA\s*MAGENTA|PEACH\s*FUZZ|SKIN|BOT\s*GREEN|OCEAN\s*BLUE|PINE\s*YELLOW|MAC\s*PURPLE|ROSEHIP|STRAWBERRY)/i
-                    ];
-                    
-                    for (const pattern of colorPatterns) {
-                        const match = product.name.match(pattern);
-                        if (match) {
-                            product.color = match[1].toUpperCase();
-                            break;
-                        }
-                    }
-                }
-                
-                // Durchmesser aus dem Namen extrahieren
-                if (product.name) {
-                    const diameterMatch = product.name.match(/(1,75|2,85|3,0)/);
-                    if (diameterMatch) {
-                        product.diameter = diameterMatch[1] + 'mm';
-                    }
-                }
-                
-                // Gewicht aus dem Namen extrahieren
-                if (product.name) {
-                    const weightMatch = product.name.match(/(\d+(?:,\d+)?)\s*(kg|gr|g)/i);
-                    if (weightMatch) {
-                        // Gewicht immer in Gramm anzeigen (ohne Einheit)
-                        let weightInGrams = parseFloat(weightMatch[1].replace(',', '.'));
-                        if (weightMatch[2].toLowerCase() === 'kg') {
-                            weightInGrams = weightInGrams * 1000; // kg zu Gramm
-                        }
-                        product.weight = Math.round(weightInGrams).toString();
-                        
-                        // Gewicht in kg für Preisberechnung
-                        product.weightInKg = weightInGrams / 1000;
-                    }
-                }
-                
-                // Preis pro kg berechnen
-                if (product.price && product.weightInKg) {
-                    // Preis mit Komma als Dezimaltrennung parsen
-                    const priceValue = parseFloat(product.price.replace(',', '.'));
-                    const pricePerKg = priceValue / product.weightInKg;
-                    // Komma als Dezimaltrennung für deutsches Format
-                    product.pricePerKg = pricePerKg.toFixed(2).replace('.', ',');
-                } else {
-                    product.pricePerKg = '';
-                }
-                
+
                 // Nur Produkte mit allen wichtigen Daten hinzufügen
-                if (product.name && product.sku && product.price) {
+                if (product.name && product.price && product.sku) {
                     products.push(product);
                 }
                 
@@ -546,6 +694,28 @@
             }
         }
         
+        return products;
+    }
+
+    async function extractProductDataWithRetry() {
+        let products = extractProductData();
+        if (products.length === 0) {
+            const hasElements = await waitForProductElements(6000, 300);
+            if (hasElements) {
+                products = extractProductData();
+                if (products.length > 0) {
+                    addLogEntry('Produkte nach Wartezeit gefunden', 'info');
+                }
+            }
+        }
+
+        if (products.length === 0) {
+            const jsonProducts = extractProductsFromJsonLd();
+            if (jsonProducts.length > 0) {
+                products = jsonProducts;
+            }
+        }
+
         return products;
     }
 
@@ -837,7 +1007,7 @@
             addLogEntry(`Setze Crawling fort: Seite ${currentPage}/${totalPages}`, 'info');
             
             // Aktuelle Seite crawlen
-            const products = extractProductData();
+            const products = await extractProductDataWithRetry();
             crawledData = crawledData.concat(products);
             addLogEntry(`${products.length} Produkte auf Seite ${currentPage} gefunden`, 'success');
             
@@ -962,7 +1132,7 @@
         
         try {
             // Aktuelle Seite crawlen
-            const products = extractProductData();
+            const products = await extractProductDataWithRetry();
             crawledData = crawledData.concat(products);
             addLogEntry(`${products.length} Produkte auf Seite ${currentPage} gefunden`, 'success');
             
